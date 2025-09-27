@@ -7,8 +7,8 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 #               KONFIGURASI WAJIB: DIBACA DARI RAILWAY
 # =================================================================
 # Token dan URL dibaca dari variabel lingkungan (Environment Variables)
-TOKEN = os.getenv("7968573254:AAEDR8cvaIdrK2QdG-h9MTfpecXuupjQ_Gs") 
-WEB_APP_URL = os.getenv("https://fragment-authentication.vercel.app/") 
+TOKEN = os.getenv("BOT_TOKEN") 
+WEB_APP_URL = os.getenv("WEB_APP_URL") 
 # =================================================================
 
 # Konfigurasi Logging

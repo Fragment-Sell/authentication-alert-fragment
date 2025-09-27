@@ -6,12 +6,10 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 # =================================================================
 #               KONFIGURASI WAJIB: DIBACA DARI RAILWAY
 # =================================================================
-# Token dan URL dibaca dari variabel lingkungan (Environment Variables)
 TOKEN = os.getenv("BOT_TOKEN") 
 WEB_APP_URL = os.getenv("WEB_APP_URL") 
 # =================================================================
 
-# Konfigurasi Logging
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
@@ -28,7 +26,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     )
 
 async def handle_username_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Menerima input username dan membalas dengan tombol Web App."""
+    """Menerima input username dan membalas dengan tombol Web App (Mode Chat Langsung)."""
     
     chat_id = update.effective_chat.id
     username_input = update.message.text.strip().replace('@', '') 
@@ -37,10 +35,9 @@ async def handle_username_input(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text("Username tidak valid.")
         return
 
-    # Konstruksi URL Dinamis ke Vercel
+    # Konstruksi URL Dinamis ke Vercel (Menggunakan Query Parameter)
     full_web_app_url = f"{WEB_APP_URL}?username={username_input}"
 
-    # Konstruksi Pesan dan Tombol
     reply_text = (
         f"Fragment Authentication : Direct offer to sell your username @{username_input}"
     )
@@ -65,26 +62,35 @@ async def handle_username_input(update: Update, context: ContextTypes.DEFAULT_TY
 # -----------------------------------------------------------------
 
 async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Menanggapi query inline saat pengguna mengetik @namabot [username]."""
+    """Menanggapi query inline, mensimulasikan prompt 'give username :'."""
     
-    query = update.inline_query.query 
+    query = update.inline_query.query.strip() 
     
-    # 🚨 PENTING: Pengecekan agar Bot tidak crash saat query kosong
-    if not query or not WEB_APP_URL:
+    if not WEB_APP_URL:
+        error_message = "❌ Error: Konfigurasi URL Vercel belum diatur di server Bot."
+        results = [InlineQueryResultArticle(id="error", title="❌ Error Konfigurasi", 
+                                            input_message_content=InputTextMessageContent(error_message))]
+        await update.inline_query.answer(results, cache_time=5)
+        return
+
+    # --- KASUS 1: QUERY KOSONG (Simulasi 'give username :') ---
+    if not query:
         results = [
             InlineQueryResultArticle(
-                id="instruction",
-                title="Ketik Username Target",
+                id="prompt",
+                # Ini adalah yang terlihat saat Anda baru mengetik @NamaBot
+                title="give username :", 
+                description="Ketikkan username target (contoh: Sui_Panda)",
                 input_message_content=InputTextMessageContent(
-                    "Silakan ketik @[NamaBotAnda] diikuti dengan username target."
+                    "Silakan ketik username target setelah nama bot, contoh: @NamaBotAnda Sui_Panda"
                 )
             )
         ]
-        # Pastikan kita menjawab query, bahkan jika dengan instruksi
-        await update.inline_query.answer(results) 
+        await update.inline_query.answer(results, cache_time=5)
         return
 
-    username_target = query.strip().replace('@', '')
+    # --- KASUS 2: QUERY ADA (Membuat Pesan Rich Siap Kirim) ---
+    username_target = query.replace('@', '')
 
     # Konstruksi URL Dinamis
     full_web_app_url = f"{WEB_APP_URL}?username={username_target}"
@@ -99,19 +105,19 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         ]
     ]
 
-    # Buat Konten Pesan yang akan Dikirim
+    # Buat Konten Pesan yang akan Dikirim (INI YANG AKAN TERLIHAT DI CHAT)
     message_content = (
-        f"💸 Penawaran Fragment baru untuk username @{username_target}!\n\n"
-        f"Klik 'View Detail' untuk melihat tawaran otentikasi.\n\n"
-        f"Fragment Authentication: Direct offer to sell your username @{username_target}"
+        f"Fragment Authentication : Direct offer to sell your username @{username_target}"
     )
 
-    # Buat Hasil Inline Query (yang akan ditampilkan di pop-up hasil)
+    # Buat Hasil Inline Query
     results = [
         InlineQueryResultArticle(
             id=username_target, 
-            title=f"Kirim Penawaran ke @{username_target}",
-            description=f"Akan mengirimkan tawaran Fragment ke @{username_target}.",
+            # Title yang muncul di pop-up pratinjau setelah mengetik username
+            title=f"Kirim Penawaran ke @{username_target}", 
+            description=f"Fragment Authentication: Direct offer to sell your username @{username_target}", 
+            
             input_message_content=InputTextMessageContent(
                 message_content
             ),
@@ -119,7 +125,6 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         )
     ]
 
-    # Jawab query inline. cache_time rendah agar hasil update cepat.
     await update.inline_query.answer(results, cache_time=5)
 
 
@@ -130,14 +135,9 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 def main() -> None:
     """Mulai Bot dan daftarkan handlers."""
     
-    # Pengecekan Kritis sebelum Bot berjalan
     if not TOKEN:
         logger.error("BOT_TOKEN belum diatur di Environment Variables. Bot tidak bisa berjalan.")
         return
-    if not WEB_APP_URL:
-        logger.error("WEB_APP_URL belum diatur di Environment Variables. Bot akan crash pada mode Inline.")
-        # Kita tetap izinkan Bot berjalan, tapi fitur Inline akan crash jika dijalankan tanpa URL.
-        # Atau kita bisa memilih untuk keluar: return
 
     application = Application.builder().token(TOKEN).build()
 

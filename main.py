@@ -6,7 +6,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 #               KONFIGURASI WAJIB DIGANTI
 # =================================================================
 # Ganti dengan Bot Token Anda dari BotFather
-TOKEN = "YOUR_BOT_TOKE7968573254:AAEDR8cvaIdrK2QdG-h9MTfpecXuupjQ_Gs"
+TOKEN = "7968573254:AAEDR8cvaIdrK2QdG-h9MTfpecXuupjQ_Gs"
 
 # Ganti dengan URL LENGKAP Vercel Anda (misalnya: https://ton-app-xxxxxx.vercel.app/index.html)
 # URL ini HARUS PERSIS sama dengan URL Mini App Anda di Vercel.

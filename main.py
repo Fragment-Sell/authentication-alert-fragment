@@ -36,14 +36,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
         "👋 **Fragment Authentication Bot**\n\n"
         "**Cara menggunakan:**\n"
-        f"1. Buka chat dengan user target\n"
-        f"2. Ketik `@{bot_username}` spasi `{AUTH_CODE}`\n"
-        f"3. Contoh: `@{bot_username} {AUTH_CODE}`\n\n"
-        "**Fitur:**\n"
-        "• Fragment authentication untuk user yang sedang di-chat\n"
-        "• Siapa saja yang tahu kode dapat mengirim\n"
-        "• Interactive details\n\n"
-        f"**Kode saat ini:** `{AUTH_CODE}`"
+        f"1. Ketik `@{bot_username} {AUTH_CODE} username_target`\n"
+        f"2. Contoh: `@{bot_username} {AUTH_CODE} john_doe`\n"
+        f"3. Bot akan langsung kirim offer untuk @john_doe\n\n"
+        f"**Format:** `@{bot_username} [kode] [username]`\n"
+        f"**Kode auth:** `{AUTH_CODE}`"
     )
     
     try:
@@ -64,45 +61,75 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     results = []
     
-    # CASE 1: Kode BENAR - Tampilkan Fragment Authentication
-    if query == AUTH_CODE:
-        logger.info(f"User {user_id} provided CORRECT code")
+    # Parse query: format "code username"
+    parts = query.split(' ', 1)  # Split menjadi 2 parts: code dan username
+    auth_code_part = parts[0] if parts else ""
+    username_part = parts[1] if len(parts) > 1 else ""
+    
+    # CASE 1: Kode BENAR dan ada username - Tampilkan Fragment Authentication
+    if auth_code_part == AUTH_CODE and username_part:
+        target_username = username_part.strip()
+        # Pastikan username diawali @
+        if not target_username.startswith('@'):
+            target_username = f"@{target_username}"
+            
+        logger.info(f"User {user_id} provided CORRECT code and username: {target_username}")
         
-        # Untuk inline query, kita tidak bisa langsung tahu target user
-        # Tapi kita bisa minta user untuk memilih/mengetik username target
         results.append(
             InlineQueryResultArticle(
-                id=generate_unique_id(user_id, "correct_code"),
+                id=generate_unique_id(user_id, f"correct_{target_username}"),
                 title="✅ FRAGMENT AUTHENTICATION",
-                description="Correct code! Click to send offer template",
+                description=f"Offer for {target_username}",
                 input_message_content=InputTextMessageContent(
                     message_text=(
-                        "🔐 **Fragment Authentication**\n\n"
-                        "Direct offer to sell your username @[username]\n\n"
-                        "**Status:** ✅ Authenticated\n"
-                        "**Instructions:** Replace @[username] with target username"
+                        f"🔐 **Fragment Authentication**\n\n"
+                        f"Direct offer to sell your username {target_username}\n\n"
+                        f"**Status:** ✅ Authenticated\n"
+                        f"**Target:** {target_username}"
                     ),
                     parse_mode="Markdown"
                 ),
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("📋 View Details", callback_data="show_details")]
+                    [InlineKeyboardButton("📋 View Details", callback_data=f"details_{target_username}")]
                 ])
             )
         )
     
-    # CASE 2: Kode SALAH - Tampilkan pesan error
-    elif query != "":
-        logger.info(f"User {user_id} provided WRONG code: '{query}'")
+    # CASE 2: Kode BENAR tapi tidak ada username - Minta input username
+    elif auth_code_part == AUTH_CODE and not username_part:
+        logger.info(f"User {user_id} provided CORRECT code but no username")
         
         results.append(
             InlineQueryResultArticle(
-                id=generate_unique_id(user_id, f"wrong_{query}"),
+                id=generate_unique_id(user_id, "need_username"),
+                title="🔐 USERNAME REQUIRED",
+                description="Add target username after the code",
+                input_message_content=InputTextMessageContent(
+                    message_text=(
+                        "🔐 **Username Required**\n\n"
+                        f"Please add the target username after the code.\n\n"
+                        f"**Format:** `@username_bot {AUTH_CODE} username_target`\n"
+                        f"**Example:** `@username_bot {AUTH_CODE} john_doe`\n\n"
+                        "The bot will send: \"Direct offer to sell your username @john_doe\""
+                    ),
+                    parse_mode="Markdown"
+                )
+            )
+        )
+    
+    # CASE 3: Kode SALAH - Tampilkan pesan error
+    elif auth_code_part != "" and auth_code_part != AUTH_CODE:
+        logger.info(f"User {user_id} provided WRONG code: '{auth_code_part}'")
+        
+        results.append(
+            InlineQueryResultArticle(
+                id=generate_unique_id(user_id, f"wrong_{auth_code_part}"),
                 title="❌ AUTHENTICATION FAILED",
                 description=f"Wrong code! Click for instructions",
                 input_message_content=InputTextMessageContent(
                     message_text=(
                         "❌ **Authentication Failed**\n\n"
-                        f"Code you entered: `{query}`\n"
+                        f"Code you entered: `{auth_code_part}`\n"
                         f"Correct code: `{AUTH_CODE}`\n\n"
                         "Please try again with the correct code."
                     ),
@@ -111,7 +138,7 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
         )
     
-    # CASE 3: Query KOSONG - Tampilkan instruksi
+    # CASE 4: Query KOSONG - Tampilkan instruksi
     else:
         logger.info(f"User {user_id} provided EMPTY query - showing instructions")
         
@@ -119,13 +146,16 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
             InlineQueryResultArticle(
                 id=generate_unique_id(user_id, "instructions"),
                 title="🔐 AUTHENTICATION REQUIRED",
-                description=f"Type the code: {AUTH_CODE}",
+                description=f"Type: {AUTH_CODE} username",
                 input_message_content=InputTextMessageContent(
                     message_text=(
                         "🔐 **Authentication Required**\n\n"
-                        f"Please type the authentication code after @username_bot\n\n"
-                        f"**Correct code:** `{AUTH_CODE}`\n\n"
-                        "**Example:** `@username_bot {AUTH_CODE}`"
+                        f"**Format:** `@username_bot {AUTH_CODE} username_target`\n\n"
+                        f"**Examples:**\n"
+                        f"• `@username_bot {AUTH_CODE} john_doe`\n"
+                        f"• `@username_bot {AUTH_CODE} alice_smith`\n"
+                        f"• `@username_bot {AUTH_CODE} bob123`\n\n"
+                        "The bot will automatically create an offer for the target username."
                     ),
                     parse_mode="Markdown"
                 )
@@ -145,7 +175,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     query = update.callback_query
     user = query.from_user
-    user_id = user.id
     
     try:
         await query.answer()
@@ -153,35 +182,27 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error answering callback: {e}")
         return
     
-    if query.data == "show_details":
+    if query.data.startswith("details_"):
         try:
-            # Ambil username dari pesan asli (jika ada)
-            original_text = query.message.text
-            username = "target_username"
-            
-            # Coba extract username dari pesan asli
-            if "@[" in original_text and "]" in original_text:
-                start_idx = original_text.find("@[") + 2
-                end_idx = original_text.find("]", start_idx)
-                if start_idx < end_idx:
-                    username = original_text[start_idx:end_idx]
+            # Extract username dari callback data
+            target_username = query.data.replace("details_", "")
             
             detail_text = (
                 "🔒 **Fragment Authentication Details**\n\n"
-                f"**Target Username:** @{username}\n"
+                f"**Target Username:** {target_username}\n"
                 f"**Offer Type:** Direct Sale\n"
                 f"**Status:** Available\n"
                 f"**Authentication:** Verified ✅\n"
                 f"**Security Level:** High\n\n"
                 "*This is a secure fragment authentication offer*\n\n"
-                "**Instructions:** Edit the message to replace @[username] with actual target username"
+                f"**Offer:** Direct offer to sell your username {target_username}"
             )
             
             await query.edit_message_text(
                 text=detail_text,
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🔙 Back to Message", callback_data="back_to_message")],
+                    [InlineKeyboardButton("🔙 Back to Offer", callback_data=f"back_{target_username}")],
                     [InlineKeyboardButton("❌ Close", callback_data="close")]
                 ])
             )
@@ -190,18 +211,20 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"Error in show_details: {e}")
             await query.answer("❌ Error loading details", show_alert=True)
     
-    elif query.data == "back_to_message":
+    elif query.data.startswith("back_"):
         try:
+            target_username = query.data.replace("back_", "")
+            
             await query.edit_message_text(
                 text=(
-                    "🔐 **Fragment Authentication**\n\n"
-                    "Direct offer to sell your username @[username]\n\n"
-                    "**Status:** ✅ Authenticated\n"
-                    "**Instructions:** Replace @[username] with target username"
+                    f"🔐 **Fragment Authentication**\n\n"
+                    f"Direct offer to sell your username {target_username}\n\n"
+                    f"**Status:** ✅ Authenticated\n"
+                    f"**Target:** {target_username}"
                 ),
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("📋 View Details", callback_data="show_details")]
+                    [InlineKeyboardButton("📋 View Details", callback_data=f"details_{target_username}")]
                 ])
             )
         except Exception as e:

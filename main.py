@@ -28,16 +28,6 @@ def escape_username(username: str) -> str:
     """Escape karakter khusus untuk menghindari masalah formatting"""
     return username.replace('_', '_​')  # underscore + zero-width space
 
-def generate_details_url(username: str) -> str:
-    """Generate URL untuk view details"""
-    if WEBHOOK_URL:
-        # Encode username untuk URL
-        import urllib.parse
-        encoded_username = urllib.parse.quote(username)
-        return f"{WEBHOOK_URL}/details?username={encoded_username}"
-    else:
-        return f"https://example.com/details?username={username}"
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler untuk command /start"""
     if not update.message:
@@ -73,6 +63,7 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
     user_id = user.id
     
     logger.info(f"Inline query from {user_id}: query='{query}'")
+    logger.info(f"WEBHOOK_URL value: {WEBHOOK_URL}")  # Debug log
     
     results = []
     
@@ -91,9 +82,6 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
         # Escape username untuk menghindari masalah formatting
         escaped_username = escape_username(target_username)
         
-        # Generate URL untuk view details
-        details_url = generate_details_url(target_username)
-        
         # Format pesan dengan HTML parsing
         message_text = (
             "🔐 <b>Fragment Authentication</b>\n\n"
@@ -102,6 +90,11 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"<b>Target:</b> {escaped_username}\n\n"
             f"<i>Click 'View Details' for more information</i>"
         )
+        
+        # Gunakan WEBHOOK_URL langsung tanpa parameter
+        view_details_url = WEBHOOK_URL
+        
+        logger.info(f"View Details URL: {view_details_url}")
         
         results.append(
             InlineQueryResultArticle(
@@ -113,7 +106,7 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
                     parse_mode="HTML"
                 ),
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("📋 View Details", url=details_url)],
+                    [InlineKeyboardButton("📋 View Details", url=view_details_url)],  # Langsung ke WEBHOOK_URL
                     [InlineKeyboardButton("❌ Close", callback_data="close")]
                 ])
             )

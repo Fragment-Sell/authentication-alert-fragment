@@ -79,9 +79,9 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
         # Format pesan tanpa markdown yang bermasalah
         message_text = (
             "🔐 **Fragment Authentication**\n\n"
-            f"Direct offer to sell your username: {target_username}\n\n"
+            f"Direct offer to sell your username: @{target_username}\n\n"
             f"Status: ✅ Authenticated\n"
-            f"Target: {target_username}"
+            f"Target: @{target_username}"
         )
         
         results.append(

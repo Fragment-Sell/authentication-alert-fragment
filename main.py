@@ -24,13 +24,6 @@ def generate_unique_id(user_id: int, query: str) -> str:
     unique_string = f"{user_id}_{query}_{uuid.uuid4()}"
     return hashlib.md5(unique_string.encode()).hexdigest()
 
-def format_username(username: str) -> str:
-    """Format username dengan @ dan pertahankan case asli"""
-    username = username.strip()
-    if not username.startswith('@'):
-        username = f"@{username}"
-    return username
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler untuk command /start"""
     if not update.message:
@@ -45,10 +38,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "**Cara menggunakan:**\n"
         f"1. Ketik `@{bot_username} {AUTH_CODE} username_target`\n"
         f"2. Contoh: `@{bot_username} {AUTH_CODE} Sui_panda`\n"
-        f"3. Bot akan kirim offer untuk @Sui_panda\n\n"
+        f"3. Bot akan kirim offer untuk username tersebut\n\n"
         f"**Format:** `@{bot_username} [kode] [username]`\n"
         f"**Kode auth:** `{AUTH_CODE}`\n\n"
-        "💡 **Tips:** Tulis username persis seperti aslinya (huruf besar/kecil)"
+        "⚠️ **Catatan:** Username akan ditampilkan persis seperti yang diketik"
     )
     
     try:
@@ -78,28 +71,29 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
     if auth_code_part == AUTH_CODE and username_part:
         # Pertahankan format asli username (case sensitive)
         target_username = username_part.strip()
-        # Tambahkan @ jika belum ada, TAPI pertahankan case
-        if not target_username.startswith('@'):
-            target_username = f"@{target_username}"
-            
+        
         logger.info(f"User {user_id} provided CORRECT code and username: '{target_username}'")
+        
+        # Encode username untuk callback data (karena ada batasan karakter)
+        username_hash = hashlib.md5(target_username.encode()).hexdigest()
         
         results.append(
             InlineQueryResultArticle(
-                id=generate_unique_id(user_id, f"correct_{target_username}"),
+                id=generate_unique_id(user_id, f"correct_{username_hash}"),
                 title="✅ FRAGMENT AUTHENTICATION",
-                description=f"Offer for {target_username}",
+                description=f"Offer for: {target_username}",
                 input_message_content=InputTextMessageContent(
                     message_text=(
                         f"🔐 **Fragment Authentication**\n\n"
-                        f"Direct offer to sell your username {target_username}\n\n"
+                        f"Direct offer to sell your username **{target_username}**\n\n"
                         f"**Status:** ✅ Authenticated\n"
-                        f"**Target:** {target_username}"
+                        f"**Target:** {target_username}\n\n"
+                        f"*Username: {target_username}*"
                     ),
                     parse_mode="Markdown"
                 ),
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("📋 View Details", callback_data=f"details_{hashlib.md5(target_username.encode()).hexdigest()}")]
+                    [InlineKeyboardButton("📋 View Details", callback_data=f"details_{username_hash}")]
                 ])
             )
         )
@@ -119,7 +113,7 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
                         f"Please add the target username after the code.\n\n"
                         f"**Format:** `@username_bot {AUTH_CODE} username_target`\n"
                         f"**Example:** `@username_bot {AUTH_CODE} Sui_panda`\n\n"
-                        "💡 **Important:** Write the username exactly as it appears (case sensitive)"
+                        "⚠️ **Important:** Username will be displayed exactly as typed"
                     ),
                     parse_mode="Markdown"
                 )
@@ -164,7 +158,7 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
                         f"• `@username_bot {AUTH_CODE} Sui_panda`\n"
                         f"• `@username_bot {AUTH_CODE} John_Doe`\n"
                         f"• `@username_bot {AUTH_CODE} AliceSmith`\n\n"
-                        "💡 **Tip:** Write the username exactly as it appears, including uppercase/lowercase letters"
+                        "⚠️ **Note:** Username will be displayed exactly as typed (case sensitive)"
                     ),
                     parse_mode="Markdown"
                 )
@@ -176,6 +170,9 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
         logger.info(f"Successfully sent {len(results)} results to user {user_id}")
     except error.TelegramError as e:
         logger.error(f"Error answering inline query: {e}")
+
+# Dictionary untuk menyimpan mapping hash -> username (sementara)
+username_storage = {}
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler untuk tombol callback"""
@@ -193,25 +190,19 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if query.data.startswith("details_"):
         try:
-            # Extract hash dari callback data dan cari username asli dari pesan
-            hash_part = query.data.replace("details_", "")
+            # Extract hash dari callback data
+            username_hash = query.data.replace("details_", "")
             
-            # Ambil username asli dari teks pesan
+            # Cari username asli dari teks pesan
             original_text = query.message.text
             target_username = "target_username"
             
-            # Extract username dari teks pesan (pertahankan case asli)
-            if "your username " in original_text:
-                start_idx = original_text.find("your username ") + len("your username ")
-                end_idx = original_text.find("\n", start_idx)
-                if end_idx == -1:
-                    end_idx = len(original_text)
-                username_line = original_text[start_idx:end_idx].strip()
-                # Ambil sampai akhir (bisa berupa username saja atau dengan teks lain)
-                if " " in username_line:
-                    target_username = username_line.split(" ")[0]
-                else:
-                    target_username = username_line
+            # Extract username dari teks pesan (dari bagian "your username **")
+            if "your username **" in original_text:
+                start_idx = original_text.find("your username **") + len("your username **")
+                end_idx = original_text.find("**", start_idx)
+                if end_idx != -1:
+                    target_username = original_text[start_idx:end_idx]
             
             detail_text = (
                 "🔒 **Fragment Authentication Details**\n\n"
@@ -224,11 +215,15 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"**Offer:** Direct offer to sell your username {target_username}"
             )
             
+            # Simpan mapping untuk back button
+            context.user_data['last_username'] = target_username
+            context.user_data['last_username_hash'] = username_hash
+            
             await query.edit_message_text(
                 text=detail_text,
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🔙 Back to Offer", callback_data="back_to_offer")],
+                    [InlineKeyboardButton("🔙 Back to Offer", callback_data=f"back_{username_hash}")],
                     [InlineKeyboardButton("❌ Close", callback_data="close")]
                 ])
             )
@@ -237,14 +232,22 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"Error in show_details: {e}")
             await query.answer("❌ Error loading details", show_alert=True)
     
-    elif query.data == "back_to_offer":
+    elif query.data.startswith("back_"):
         try:
-            # Kembali ke pesan asli (tidak perlu menyimpan username)
+            username_hash = query.data.replace("back_", "")
+            target_username = context.user_data.get('last_username', 'target_username')
+            
             await query.edit_message_text(
-                text=query.message.text,  # Kembalikan ke teks asli
+                text=(
+                    f"🔐 **Fragment Authentication**\n\n"
+                    f"Direct offer to sell your username **{target_username}**\n\n"
+                    f"**Status:** ✅ Authenticated\n"
+                    f"**Target:** {target_username}\n\n"
+                    f"*Username: {target_username}*"
+                ),
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("📋 View Details", callback_data="details_back")]
+                    [InlineKeyboardButton("📋 View Details", callback_data=f"details_{username_hash}")]
                 ])
             )
         except Exception as e:

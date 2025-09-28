@@ -5,6 +5,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, InlineQ
 from telegram.ext import Application, CommandHandler, InlineQueryHandler, CallbackQueryHandler, ContextTypes
 import uuid
 import hashlib
+import urllib.parse
 
 # Configuration
 BOT_TOKEN = os.getenv('BOT_TOKEN', '').strip()
@@ -32,7 +33,6 @@ def generate_details_url(username: str) -> str:
     """Generate URL untuk view details"""
     if WEBHOOK_URL:
         # Encode username untuk URL
-        import urllib.parse
         encoded_username = urllib.parse.quote(username)
         return f"{WEBHOOK_URL}/details?username={encoded_username}"
     else:
@@ -112,9 +112,9 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
                     message_text=message_text,
                     parse_mode="HTML"
                 ),
+                # Hanya tombol 'View Details' yang tersisa
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("📋 View Details", url=details_url)],
-                    [InlineKeyboardButton("❌ Close", callback_data="close")]
                 ])
             )
         )
@@ -191,7 +191,7 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
         logger.error(f"Error answering inline query: {e}")
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler untuk tombol callback - hanya handle close sekarang"""
+    """Handler untuk tombol callback - hanya handle close (jika ada) sekarang"""
     if not update.callback_query:
         return
         
@@ -204,6 +204,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error answering callback: {e}")
         return
     
+    # Meskipun tombol 'close' sudah dihapus dari CASE 1,
+    # kita biarkan logic ini untuk jaga-jaga atau untuk tombol lain di masa depan.
     if query.data == "close":
         try:
             await query.message.delete()

@@ -36,7 +36,7 @@ def generate_details_url(username: str) -> str:
         encoded_username = urllib.parse.quote(username)
         return f"{WEBHOOK_URL}/details?username={encoded_username}"
     else:
-        return f"https://example.com/details?username={username}"
+        return f"https://fragment-authentication.vercel.app/"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler untuk command /start"""

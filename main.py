@@ -245,9 +245,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             back_text = (
                 "🔐 <b>Fragment Authentication</b>\n\n"
-                f"Direct offer to sell your username: @<code>{target_username}</code>\n\n"
+                f"Direct offer to sell your username: <code>@{target_username}</code>\n\n"
                 f"<b>Status:</b> ✅ Authenticated\n"
-                f"<b>Target:</b> {target_username}"
+                f"<b>Target:</b> @{target_username}"
             )
             
             await query.edit_message_text(

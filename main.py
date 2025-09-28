@@ -88,7 +88,7 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         # Tentukan URL untuk tombol "View Details"
         # Gunakan WEBHOOK_URL secara langsung tanpa parameter tambahan
-        details_url = WEBHOOK_URL if WEBHOOK_URL else "https://example.com/details-page-default" 
+        details_url = WEBHOOK_URL 
         
         # Format pesan dengan HTML parsing untuk kontrol yang lebih baik
         message_text = (

@@ -100,7 +100,7 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
                     parse_mode="HTML"
                 ),
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("📋 View Details", url=WEBHOOK_URL)],
+                    [InlineKeyboardButton("📋 View Details", url=WEBHOOK_URL)],  # Langsung ke WEBHOOK_URL statis
                     [InlineKeyboardButton("❌ Close", callback_data="close")]
                 ])
             )

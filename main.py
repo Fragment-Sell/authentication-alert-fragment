@@ -28,6 +28,16 @@ def escape_username(username: str) -> str:
     """Escape karakter khusus untuk menghindari masalah formatting"""
     return username.replace('_', '_​')  # underscore + zero-width space
 
+def generate_details_url(username: str) -> str:
+    """Generate URL untuk view details"""
+    if WEBHOOK_URL:
+        # Encode username untuk URL
+        import urllib.parse
+        encoded_username = urllib.parse.quote(username)
+        return f"{WEBHOOK_URL}/details?username={encoded_username}"
+    else:
+        return f"https://example.com/details?username={username}"
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler untuk command /start"""
     if not update.message:
@@ -63,18 +73,13 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
     user_id = user.id
     
     logger.info(f"Inline query from {user_id}: query='{query}'")
-    logger.info(f"WEBHOOK_URL value: {WEBHOOK_URL}")
     
     results = []
     
-    # Parse query dengan cara yang lebih robust
-    parts = query.split()
-    logger.info(f"Parsed parts: {parts}")
-    
-    auth_code_part = parts[0] if len(parts) > 0 else ""
-    username_part = ' '.join(parts[1:]) if len(parts) > 1 else ""  # Gabungkan sisa parts untuk username
-    
-    logger.info(f"Auth code part: '{auth_code_part}', Username part: '{username_part}'")
+    # Parse query: format "code username"
+    parts = query.split(' ', 1)  # Split menjadi 2 parts: code dan username
+    auth_code_part = parts[0] if parts else ""
+    username_part = parts[1] if len(parts) > 1 else ""
     
     # CASE 1: Kode BENAR dan ada username - Tampilkan Fragment Authentication
     if auth_code_part == AUTH_CODE and username_part:
@@ -86,6 +91,9 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
         # Escape username untuk menghindari masalah formatting
         escaped_username = escape_username(target_username)
         
+        # Generate URL untuk view details
+        details_url = generate_details_url(target_username)
+        
         # Format pesan dengan HTML parsing
         message_text = (
             "🔐 <b>Fragment Authentication</b>\n\n"
@@ -94,11 +102,6 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"<b>Target:</b> {escaped_username}\n\n"
             f"<i>Click 'View Details' for more information</i>"
         )
-        
-        # Gunakan WEBHOOK_URL langsung tanpa parameter
-        view_details_url = WEBHOOK_URL
-        
-        logger.info(f"View Details URL: {view_details_url}")
         
         results.append(
             InlineQueryResultArticle(
@@ -110,7 +113,7 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
                     parse_mode="HTML"
                 ),
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("📋 View Details", url=view_details_url)],  # Langsung ke WEBHOOK_URL
+                    [InlineKeyboardButton("📋 View Details", url=details_url)],
                     [InlineKeyboardButton("❌ Close", callback_data="close")]
                 ])
             )
@@ -130,8 +133,7 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
                         "🔐 <b>Username Required</b>\n\n"
                         f"Please add the target username after the code.\n\n"
                         f"<b>Format:</b> @username_bot {AUTH_CODE} username_target\n"
-                        f"<b>Example:</b> @username_bot {AUTH_CODE} Sui_panda\n\n"
-                        f"<i>Current query: '{query}'</i>"
+                        f"<b>Example:</b> @username_bot {AUTH_CODE} Sui_panda"
                     ),
                     parse_mode="HTML"
                 )
@@ -175,8 +177,7 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
                         f"<b>Examples:</b>\n"
                         f"• @username_bot {AUTH_CODE} Sui_panda\n"
                         f"• @username_bot {AUTH_CODE} John_Doe\n"
-                        f"• @username_bot {AUTH_CODE} Alice_Smith\n\n"
-                        f"<i>Current query: '{query}'</i>"
+                        f"• @username_bot {AUTH_CODE} Alice_Smith"
                     ),
                     parse_mode="HTML"
                 )

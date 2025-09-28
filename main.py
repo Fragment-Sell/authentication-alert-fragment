@@ -11,7 +11,7 @@ import urllib.parse
 BOT_TOKEN = os.getenv('BOT_TOKEN', '').strip()
 AUTH_CODE = os.getenv('AUTH_CODE', '1234').strip()
 PORT = int(os.getenv('PORT', 8443))
-WEBHOOK_URL = os.getenv('WEBHOOK_URL', 'https://fragment-authentication.vercel.app/').strip()
+WEBHOOK_URL = os.getenv('WEBHOOK_URL', '').strip()
 
 # Setup logging
 logging.basicConfig(

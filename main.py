@@ -26,8 +26,17 @@ def generate_unique_id(user_id: int, query: str) -> str:
 
 def escape_username(username: str) -> str:
     """Escape karakter khusus untuk menghindari masalah formatting"""
-    # Ganti underscore dengan underscore + zero-width space untuk menghindari italic
     return username.replace('_', '_​')  # underscore + zero-width space
+
+def generate_details_url(username: str) -> str:
+    """Generate URL untuk view details"""
+    if WEBHOOK_URL:
+        # Encode username untuk URL
+        import urllib.parse
+        encoded_username = urllib.parse.quote(username)
+        return f"{WEBHOOK_URL}/details?username={encoded_username}"
+    else:
+        return f"https://example.com/details?username={username}"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler untuk command /start"""
@@ -46,7 +55,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"3. Bot akan kirim offer untuk username tersebut\n\n"
         f"**Format:** `@{bot_username} [kode] [username]`\n"
         f"**Kode auth:** `{AUTH_CODE}`\n\n"
-        "✅ **Support:** Username dengan underscore (_) didukung penuh"
+        "🔗 **View Details:** Akan membuka halaman web dengan detail lengkap"
     )
     
     try:
@@ -82,28 +91,30 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
         # Escape username untuk menghindari masalah formatting
         escaped_username = escape_username(target_username)
         
-        # Encode username untuk callback data
-        username_hash = hashlib.md5(target_username.encode()).hexdigest()
+        # Generate URL untuk view details
+        details_url = generate_details_url(target_username)
         
-        # Format pesan dengan HTML parsing untuk kontrol yang lebih baik
+        # Format pesan dengan HTML parsing
         message_text = (
             "🔐 <b>Fragment Authentication</b>\n\n"
             f"Direct offer to sell your username: <code>{target_username}</code>\n\n"
             f"<b>Status:</b> ✅ Authenticated\n"
-            f"<b>Target:</b> {escaped_username}"
+            f"<b>Target:</b> {escaped_username}\n\n"
+            f"<i>Click 'View Details' for more information</i>"
         )
         
         results.append(
             InlineQueryResultArticle(
-                id=generate_unique_id(user_id, f"correct_{username_hash}"),
+                id=generate_unique_id(user_id, f"correct_{target_username}"),
                 title="✅ FRAGMENT AUTHENTICATION",
                 description=f"Offer for: {target_username}",
                 input_message_content=InputTextMessageContent(
                     message_text=message_text,
-                    parse_mode="HTML"  # Gunakan HTML untuk formatting yang lebih terkontrol
+                    parse_mode="HTML"
                 ),
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("📋 View Details", callback_data=f"details_{username_hash}")]
+                    [InlineKeyboardButton("📋 View Details", url=details_url)],
+                    [InlineKeyboardButton("❌ Close", callback_data="close")]
                 ])
             )
         )
@@ -166,8 +177,7 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
                         f"<b>Examples:</b>\n"
                         f"• @username_bot {AUTH_CODE} Sui_panda\n"
                         f"• @username_bot {AUTH_CODE} John_Doe\n"
-                        f"• @username_bot {AUTH_CODE} Alice_Smith\n"
-                        f"• @username_bot {AUTH_CODE} test_user_123"
+                        f"• @username_bot {AUTH_CODE} Alice_Smith"
                     ),
                     parse_mode="HTML"
                 )
@@ -181,7 +191,7 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
         logger.error(f"Error answering inline query: {e}")
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler untuk tombol callback"""
+    """Handler untuk tombol callback - hanya handle close sekarang"""
     if not update.callback_query:
         return
         
@@ -194,73 +204,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error answering callback: {e}")
         return
     
-    if query.data.startswith("details_"):
-        try:
-            # Extract hash dari callback data
-            username_hash = query.data.replace("details_", "")
-            
-            # Cari username asli dari teks pesan
-            original_text = query.message.text
-            target_username = "target_username"
-            
-            # Extract username dari teks pesan (dari bagian <code> tags)
-            if "<code>" in original_text:
-                start_idx = original_text.find("<code>") + len("<code>")
-                end_idx = original_text.find("</code>", start_idx)
-                if end_idx != -1:
-                    target_username = original_text[start_idx:end_idx].strip()
-            
-            detail_text = (
-                "🔒 <b>Fragment Authentication Details</b>\n\n"
-                f"<b>Target Username:</b> {target_username}\n"
-                f"<b>Offer Type:</b> Direct Sale\n"
-                f"<b>Status:</b> Available\n"
-                f"<b>Authentication:</b> Verified ✅\n"
-                f"<b>Security Level:</b> High\n\n"
-                "<i>This is a secure fragment authentication offer</i>\n\n"
-                f"<b>Offer:</b> Direct offer to sell your username {target_username}"
-            )
-            
-            # Simpan mapping untuk back button
-            context.user_data['last_username'] = target_username
-            context.user_data['last_username_hash'] = username_hash
-            
-            await query.edit_message_text(
-                text=detail_text,
-                parse_mode="HTML",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🔙 Back to Offer", callback_data=f"back_{username_hash}")],
-                    [InlineKeyboardButton("❌ Close", callback_data="close")]
-                ])
-            )
-                
-        except Exception as e:
-            logger.error(f"Error in show_details: {e}")
-            await query.answer("❌ Error loading details", show_alert=True)
-    
-    elif query.data.startswith("back_"):
-        try:
-            username_hash = query.data.replace("back_", "")
-            target_username = context.user_data.get('last_username', 'target_username')
-            
-            back_text = (
-                "🔐 <b>Fragment Authentication</b>\n\n"
-                f"Direct offer to sell your username: <code>@{target_username}</code>\n\n"
-                f"<b>Status:</b> ✅ Authenticated\n"
-                f"<b>Target:</b> @{target_username}"
-            )
-            
-            await query.edit_message_text(
-                text=back_text,
-                parse_mode="HTML",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("📋 View Details", callback_data=f"details_{username_hash}")]
-                ])
-            )
-        except Exception as e:
-            logger.error(f"Error going back: {e}")
-    
-    elif query.data == "close":
+    if query.data == "close":
         try:
             await query.message.delete()
         except Exception as e:
@@ -278,6 +222,7 @@ def main():
         
     logger.info(f"Starting Fragment Authentication Bot")
     logger.info(f"AUTH_CODE: {AUTH_CODE}")
+    logger.info(f"WEBHOOK_URL: {WEBHOOK_URL}")
 
     application = Application.builder().token(BOT_TOKEN).build()
     

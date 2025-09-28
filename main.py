@@ -6,9 +6,8 @@ from telegram.ext import Application, CommandHandler, InlineQueryHandler, Callba
 import uuid
 import hashlib
 
-# Configuration
+# Configuration - Hanya butuh BOT_TOKEN dan AUTH_CODE saja
 BOT_TOKEN = os.getenv('BOT_TOKEN', '').strip()
-OWNER_IDS_STR = os.getenv('OWNER_IDS', '').strip()
 AUTH_CODE = os.getenv('AUTH_CODE', '1234').strip()
 PORT = int(os.getenv('PORT', 8443))
 WEBHOOK_URL = os.getenv('WEBHOOK_URL', '').strip()
@@ -19,15 +18,6 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
-
-# Parse OWNER_IDS
-OWNER_IDS = set()
-if OWNER_IDS_STR:
-    try:
-        OWNER_IDS = set(map(int, [x.strip() for x in OWNER_IDS_STR.split(',') if x.strip()]))
-        logger.info(f"OWNER_IDS: {OWNER_IDS}")
-    except ValueError as e:
-        logger.error(f"Error parsing OWNER_IDS: {e}")
 
 def generate_unique_id(user_id: int, query: str) -> str:
     """Generate unique ID berdasarkan user_id dan query untuk menghindari cache"""
@@ -41,7 +31,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     user = update.effective_user
     user_id = user.id
-    is_owner = user_id in OWNER_IDS
     
     bot_username = (await context.bot.get_me()).username
     
@@ -51,11 +40,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"1. Buka chat/grup manapun\n"
         f"2. Ketik `@{bot_username}` spasi `{AUTH_CODE}`\n"
         f"3. Contoh: `@{bot_username} {AUTH_CODE}`\n\n"
-        "**Debug Info:**\n"
-        f"• User ID: `{user_id}`\n"
-        f"• Owner Status: {'✅' if is_owner else '❌'}\n"
-        f"• Auth Code: `{AUTH_CODE}`\n\n"
-        "Jika ada masalah, coba hapus cache dengan ketik: `@username_bot random123`"
+        "**Fitur:**\n"
+        "• Siapa saja yang tahu kode dapat mengirim fragment authentication\n"
+        "• Secure fragment authentication\n"
+        "• Interactive buttons\n\n"
+        f"**Kode saat ini:** `{AUTH_CODE}`\n"
+        f"**User ID Anda:** `{user_id}`"
     )
     
     try:
@@ -74,36 +64,13 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
     username = user.username or user.first_name
     
     logger.info(f"Inline query from {user_id} (@{username}): query='{query}'")
-    logger.info(f"User in OWNER_IDS: {user_id in OWNER_IDS}")
     logger.info(f"Query == AUTH_CODE: {query == AUTH_CODE}")
     
     results = []
     
-    # CASE 1: User BUKAN owner - selalu tampilkan access denied
-    if user_id not in OWNER_IDS:
-        logger.info(f"User {user_id} is NOT in OWNER_IDS - showing access denied")
-        
-        results.append(
-            InlineQueryResultArticle(
-                id=generate_unique_id(user_id, "not_owner"),
-                title="❌ ACCESS DENIED",
-                description="This feature is for owners only",
-                input_message_content=InputTextMessageContent(
-                    message_text=(
-                        "🚫 **Access Denied**\n\n"
-                        "This feature is only available for verified owners.\n\n"
-                        f"**Your User ID:** `{user_id}`\n"
-                        "**Status:** Not authorized"
-                    ),
-                    parse_mode="Markdown"
-                ),
-                thumbnail_url="https://img.icons8.com/color/96/000000/no-entry.png"
-            )
-        )
-    
-    # CASE 2: User adalah owner DAN kode benar
-    elif query == AUTH_CODE:
-        logger.info(f"User {user_id} is owner and provided CORRECT code - showing fragment auth")
+    # CASE 1: Kode BENAR - Tampilkan Fragment Authentication
+    if query == AUTH_CODE:
+        logger.info(f"User {user_id} provided CORRECT code - showing fragment auth")
         
         contact_url = f"https://t.me/{user.username}" if user.username else f"tg://user?id={user_id}"
         
@@ -117,57 +84,62 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
                         "🔐 **Fragment Authentication**\n\n"
                         f"Direct offer to sell your username @{username}\n\n"
                         "**Status:** ✅ Authenticated\n"
-                        f"**Owner:** {username}\n"
-                        f"**User ID:** {user_id}"
+                        f"**Username:** @{username}\n"
+                        f"**Authentication:** Verified"
                     ),
                     parse_mode="Markdown"
                 ),
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("📋 View Details", callback_data=f"details_{user_id}")],
-                    [InlineKeyboardButton("👤 Contact Owner", url=contact_url)]
+                    [InlineKeyboardButton("👤 Contact", url=contact_url)]
                 ]),
                 thumbnail_url="https://img.icons8.com/color/96/000000/verified-account.png"
             )
         )
     
-    # CASE 3: User adalah owner TAPI kode salah/kosong
-    else:
-        logger.info(f"User {user_id} is owner but provided WRONG/EMPTY code: '{query}'")
-        
-        if query == "":
-            title = "🔐 AUTHENTICATION REQUIRED"
-            description = f"Type the code: {AUTH_CODE}"
-            message_text = (
-                "🔐 **Authentication Required**\n\n"
-                f"Please type the authentication code after @username_bot\n\n"
-                f"**Correct code:** `{AUTH_CODE}`\n"
-                f"**Your User ID:** `{user_id}`\n\n"
-                "Example: `@username_bot 1234`"
-            )
-            thumbnail = "https://img.icons8.com/color/96/000000/lock--v1.png"
-        else:
-            title = "❌ WRONG CODE"
-            description = f"Wrong code! Correct: {AUTH_CODE}"
-            message_text = (
-                "❌ **Wrong Authentication Code**\n\n"
-                f"Code you entered: `{query}`\n"
-                f"Correct code: `{AUTH_CODE}`\n\n"
-                f"**Your User ID:** `{user_id}`\n"
-                "**Status:** Owner (but wrong code)\n\n"
-                "Please try again with the correct code."
-            )
-            thumbnail = "https://img.icons8.com/color/96/000000/cancel.png"
+    # CASE 2: Kode SALAH - Tampilkan pesan error
+    elif query != "":
+        logger.info(f"User {user_id} provided WRONG code: '{query}'")
         
         results.append(
             InlineQueryResultArticle(
                 id=generate_unique_id(user_id, f"wrong_{query}"),
-                title=title,
-                description=description,
+                title="❌ AUTHENTICATION FAILED",
+                description=f"Wrong code! Click for instructions",
                 input_message_content=InputTextMessageContent(
-                    message_text=message_text,
+                    message_text=(
+                        "❌ **Authentication Failed**\n\n"
+                        f"Code you entered: `{query}`\n"
+                        f"Correct code: `{AUTH_CODE}`\n\n"
+                        "Please try again with the correct code.\n\n"
+                        f"**Example:** `@username_bot {AUTH_CODE}`"
+                    ),
                     parse_mode="Markdown"
                 ),
-                thumbnail_url=thumbnail
+                thumbnail_url="https://img.icons8.com/color/96/000000/cancel.png"
+            )
+        )
+    
+    # CASE 3: Query KOSONG - Tampilkan instruksi
+    else:
+        logger.info(f"User {user_id} provided EMPTY query - showing instructions")
+        
+        results.append(
+            InlineQueryResultArticle(
+                id=generate_unique_id(user_id, "instructions"),
+                title="🔐 AUTHENTICATION REQUIRED",
+                description=f"Type the code: {AUTH_CODE}",
+                input_message_content=InputTextMessageContent(
+                    message_text=(
+                        "🔐 **Authentication Required**\n\n"
+                        f"Please type the authentication code after @username_bot\n\n"
+                        f"**Correct code:** `{AUTH_CODE}`\n\n"
+                        f"**Example:** `@username_bot {AUTH_CODE}`\n\n"
+                        "Siapa saja yang mengetahui kode dapat mengirim fragment authentication."
+                    ),
+                    parse_mode="Markdown"
+                ),
+                thumbnail_url="https://img.icons8.com/color/96/000000/lock--v1.png"
             )
         )
     
@@ -197,6 +169,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             target_user_id = int(query.data.split("_")[1])
             
+            # Verifikasi sederhana - hanya user yang membuat pesan yang bisa lihat detail
             if user_id == target_user_id:
                 detail_text = (
                     "🔒 **Fragment Authentication Details**\n\n"
@@ -206,7 +179,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"**Status:** Available\n"
                     f"**Authentication:** Verified ✅\n"
                     f"**Security Level:** High\n\n"
-                    "*This is a secure fragment authentication offer*"
+                    "*This is a secure fragment authentication offer*\n\n"
+                    "**Note:** Anyone with the correct code can send this offer."
                 )
                 
                 await query.edit_message_text(
@@ -218,7 +192,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     ])
                 )
             else:
-                await query.answer("❌ Access denied", show_alert=True)
+                await query.answer("❌ Anda hanya dapat melihat detail pesan yang Anda buat", show_alert=True)
                 
         except Exception as e:
             logger.error(f"Error in details: {e}")
@@ -234,7 +208,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("📋 View Details", callback_data=f"details_{user_id}")],
-                    [InlineKeyboardButton("👤 Contact Owner", url=contact_url)]
+                    [InlineKeyboardButton("👤 Contact", url=contact_url)]
                 ])
             )
         except Exception as e:
@@ -256,8 +230,7 @@ def main():
         logger.error("BOT_TOKEN tidak ditemukan!")
         sys.exit(1)
         
-    logger.info(f"Starting bot with:")
-    logger.info(f"OWNER_IDS: {OWNER_IDS}")
+    logger.info(f"Starting Fragment Authentication Bot")
     logger.info(f"AUTH_CODE: {AUTH_CODE}")
     logger.info(f"Sample command: @your_bot_username {AUTH_CODE}")
 

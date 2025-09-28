@@ -6,7 +6,7 @@ from telegram.ext import Application, CommandHandler, InlineQueryHandler, Callba
 import uuid
 import hashlib
 
-# Configuration - Hanya butuh BOT_TOKEN dan AUTH_CODE saja
+# Configuration
 BOT_TOKEN = os.getenv('BOT_TOKEN', '').strip()
 AUTH_CODE = os.getenv('AUTH_CODE', '1234').strip()
 PORT = int(os.getenv('PORT', 8443))
@@ -30,22 +30,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
         
     user = update.effective_user
-    user_id = user.id
     
     bot_username = (await context.bot.get_me()).username
     
     welcome_text = (
         "👋 **Fragment Authentication Bot**\n\n"
         "**Cara menggunakan:**\n"
-        f"1. Buka chat/grup manapun\n"
+        f"1. Buka chat dengan user target\n"
         f"2. Ketik `@{bot_username}` spasi `{AUTH_CODE}`\n"
         f"3. Contoh: `@{bot_username} {AUTH_CODE}`\n\n"
         "**Fitur:**\n"
-        "• Siapa saja yang tahu kode dapat mengirim fragment authentication\n"
-        "• Secure fragment authentication\n"
-        "• Interactive buttons\n\n"
-        f"**Kode saat ini:** `{AUTH_CODE}`\n"
-        f"**User ID Anda:** `{user_id}`"
+        "• Fragment authentication untuk user yang sedang di-chat\n"
+        "• Siapa saja yang tahu kode dapat mengirim\n"
+        "• Interactive details\n\n"
+        f"**Kode saat ini:** `{AUTH_CODE}`"
     )
     
     try:
@@ -61,39 +59,34 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
     query = update.inline_query.query.strip()
     user = update.inline_query.from_user
     user_id = user.id
-    username = user.username or user.first_name
     
-    logger.info(f"Inline query from {user_id} (@{username}): query='{query}'")
-    logger.info(f"Query == AUTH_CODE: {query == AUTH_CODE}")
+    logger.info(f"Inline query from {user_id}: query='{query}'")
     
     results = []
     
     # CASE 1: Kode BENAR - Tampilkan Fragment Authentication
     if query == AUTH_CODE:
-        logger.info(f"User {user_id} provided CORRECT code - showing fragment auth")
+        logger.info(f"User {user_id} provided CORRECT code")
         
-        contact_url = f"https://t.me/{user.username}" if user.username else f"tg://user?id={user_id}"
-        
+        # Untuk inline query, kita tidak bisa langsung tahu target user
+        # Tapi kita bisa minta user untuk memilih/mengetik username target
         results.append(
             InlineQueryResultArticle(
                 id=generate_unique_id(user_id, "correct_code"),
                 title="✅ FRAGMENT AUTHENTICATION",
-                description="Correct code! Click to send offer",
+                description="Correct code! Click to send offer template",
                 input_message_content=InputTextMessageContent(
                     message_text=(
                         "🔐 **Fragment Authentication**\n\n"
-                        f"Direct offer to sell your username @{username}\n\n"
+                        "Direct offer to sell your username @[username]\n\n"
                         "**Status:** ✅ Authenticated\n"
-                        f"**Username:** @{username}\n"
-                        f"**Authentication:** Verified"
+                        "**Instructions:** Replace @[username] with target username"
                     ),
                     parse_mode="Markdown"
                 ),
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("📋 View Details", callback_data=f"details_{user_id}")],
-                    [InlineKeyboardButton("👤 Contact", url=contact_url)]
-                ]),
-                thumbnail_url="https://img.icons8.com/color/96/000000/verified-account.png"
+                    [InlineKeyboardButton("📋 View Details", callback_data="show_details")]
+                ])
             )
         )
     
@@ -111,12 +104,10 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
                         "❌ **Authentication Failed**\n\n"
                         f"Code you entered: `{query}`\n"
                         f"Correct code: `{AUTH_CODE}`\n\n"
-                        "Please try again with the correct code.\n\n"
-                        f"**Example:** `@username_bot {AUTH_CODE}`"
+                        "Please try again with the correct code."
                     ),
                     parse_mode="Markdown"
-                ),
-                thumbnail_url="https://img.icons8.com/color/96/000000/cancel.png"
+                )
             )
         )
     
@@ -134,17 +125,14 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
                         "🔐 **Authentication Required**\n\n"
                         f"Please type the authentication code after @username_bot\n\n"
                         f"**Correct code:** `{AUTH_CODE}`\n\n"
-                        f"**Example:** `@username_bot {AUTH_CODE}`\n\n"
-                        "Siapa saja yang mengetahui kode dapat mengirim fragment authentication."
+                        "**Example:** `@username_bot {AUTH_CODE}`"
                     ),
                     parse_mode="Markdown"
-                ),
-                thumbnail_url="https://img.icons8.com/color/96/000000/lock--v1.png"
+                )
             )
         )
     
     try:
-        # CACHE_TIME = 1 untuk menghindari cache, IS_PERSONAL = True untuk hasil per user
         await update.inline_query.answer(results, cache_time=1, is_personal=True)
         logger.info(f"Successfully sent {len(results)} results to user {user_id}")
     except error.TelegramError as e:
@@ -165,50 +153,55 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error answering callback: {e}")
         return
     
-    if query.data.startswith("details_"):
+    if query.data == "show_details":
         try:
-            target_user_id = int(query.data.split("_")[1])
+            # Ambil username dari pesan asli (jika ada)
+            original_text = query.message.text
+            username = "target_username"
             
-            # Verifikasi sederhana - hanya user yang membuat pesan yang bisa lihat detail
-            if user_id == target_user_id:
-                detail_text = (
-                    "🔒 **Fragment Authentication Details**\n\n"
-                    f"**Username:** @{user.username or user.first_name}\n"
-                    f"**User ID:** `{user_id}`\n"
-                    f"**Offer Type:** Direct Sale\n"
-                    f"**Status:** Available\n"
-                    f"**Authentication:** Verified ✅\n"
-                    f"**Security Level:** High\n\n"
-                    "*This is a secure fragment authentication offer*\n\n"
-                    "**Note:** Anyone with the correct code can send this offer."
-                )
-                
-                await query.edit_message_text(
-                    text=detail_text,
-                    parse_mode="Markdown",
-                    reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("🔙 Back", callback_data="back")],
-                        [InlineKeyboardButton("❌ Close", callback_data="close")]
-                    ])
-                )
-            else:
-                await query.answer("❌ Anda hanya dapat melihat detail pesan yang Anda buat", show_alert=True)
-                
-        except Exception as e:
-            logger.error(f"Error in details: {e}")
-            await query.answer("❌ Error loading details", show_alert=True)
-    
-    elif query.data == "back":
-        try:
-            username = user.username or user.first_name
-            contact_url = f"https://t.me/{user.username}" if user.username else f"tg://user?id={user_id}"
+            # Coba extract username dari pesan asli
+            if "@[" in original_text and "]" in original_text:
+                start_idx = original_text.find("@[") + 2
+                end_idx = original_text.find("]", start_idx)
+                if start_idx < end_idx:
+                    username = original_text[start_idx:end_idx]
+            
+            detail_text = (
+                "🔒 **Fragment Authentication Details**\n\n"
+                f"**Target Username:** @{username}\n"
+                f"**Offer Type:** Direct Sale\n"
+                f"**Status:** Available\n"
+                f"**Authentication:** Verified ✅\n"
+                f"**Security Level:** High\n\n"
+                "*This is a secure fragment authentication offer*\n\n"
+                "**Instructions:** Edit the message to replace @[username] with actual target username"
+            )
             
             await query.edit_message_text(
-                text=f"🔐 **Fragment Authentication**\n\nDirect offer to sell your username @{username}",
+                text=detail_text,
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("📋 View Details", callback_data=f"details_{user_id}")],
-                    [InlineKeyboardButton("👤 Contact", url=contact_url)]
+                    [InlineKeyboardButton("🔙 Back to Message", callback_data="back_to_message")],
+                    [InlineKeyboardButton("❌ Close", callback_data="close")]
+                ])
+            )
+                
+        except Exception as e:
+            logger.error(f"Error in show_details: {e}")
+            await query.answer("❌ Error loading details", show_alert=True)
+    
+    elif query.data == "back_to_message":
+        try:
+            await query.edit_message_text(
+                text=(
+                    "🔐 **Fragment Authentication**\n\n"
+                    "Direct offer to sell your username @[username]\n\n"
+                    "**Status:** ✅ Authenticated\n"
+                    "**Instructions:** Replace @[username] with target username"
+                ),
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("📋 View Details", callback_data="show_details")]
                 ])
             )
         except Exception as e:
@@ -232,7 +225,6 @@ def main():
         
     logger.info(f"Starting Fragment Authentication Bot")
     logger.info(f"AUTH_CODE: {AUTH_CODE}")
-    logger.info(f"Sample command: @your_bot_username {AUTH_CODE}")
 
     application = Application.builder().token(BOT_TOKEN).build()
     

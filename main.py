@@ -4,6 +4,7 @@ import sys
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, InlineQueryResultArticle, InputTextMessageContent, error
 from telegram.ext import Application, CommandHandler, InlineQueryHandler, CallbackQueryHandler, ContextTypes
 import uuid
+import hashlib
 
 # Configuration
 BOT_TOKEN = os.getenv('BOT_TOKEN', '').strip()
@@ -28,6 +29,11 @@ if OWNER_IDS_STR:
     except ValueError as e:
         logger.error(f"Error parsing OWNER_IDS: {e}")
 
+def generate_unique_id(user_id: int, query: str) -> str:
+    """Generate unique ID berdasarkan user_id dan query untuk menghindari cache"""
+    unique_string = f"{user_id}_{query}_{uuid.uuid4()}"
+    return hashlib.md5(unique_string.encode()).hexdigest()
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler untuk command /start"""
     if not update.message:
@@ -42,15 +48,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
         "👋 **Fragment Authentication Bot**\n\n"
         "**Cara menggunakan:**\n"
-        f"1. Ketik `@{bot_username}` di chat manapun\n"
-        f"2. Pilih opsi yang sesuai\n"
-        f"3. Jika owner, ketik kode: `{AUTH_CODE}`\n\n"
+        f"1. Buka chat/grup manapun\n"
+        f"2. Ketik `@{bot_username}` spasi `{AUTH_CODE}`\n"
+        f"3. Contoh: `@{bot_username} {AUTH_CODE}`\n\n"
+        "**Debug Info:**\n"
+        f"• User ID: `{user_id}`\n"
+        f"• Owner Status: {'✅' if is_owner else '❌'}\n"
+        f"• Auth Code: `{AUTH_CODE}`\n\n"
+        "Jika ada masalah, coba hapus cache dengan ketik: `@username_bot random123`"
     )
-    
-    if is_owner:
-        welcome_text += f"✅ **Status:** Owner (ID: {user_id})"
-    else:
-        welcome_text += f"❌ **Status:** Bukan Owner\nUser ID: {user_id}"
     
     try:
         await update.message.reply_text(welcome_text, parse_mode="Markdown")
@@ -67,95 +73,108 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
     user_id = user.id
     username = user.username or user.first_name
     
-    logger.info(f"Inline query from {user_id}: query='{query}'")
+    logger.info(f"Inline query from {user_id} (@{username}): query='{query}'")
+    logger.info(f"User in OWNER_IDS: {user_id in OWNER_IDS}")
+    logger.info(f"Query == AUTH_CODE: {query == AUTH_CODE}")
     
     results = []
     
-    # OPSI A: Jika kode benar DAN user adalah owner
-    if query == AUTH_CODE and user_id in OWNER_IDS:
-        logger.info(f"User {user_id} provided CORRECT code")
+    # CASE 1: User BUKAN owner - selalu tampilkan access denied
+    if user_id not in OWNER_IDS:
+        logger.info(f"User {user_id} is NOT in OWNER_IDS - showing access denied")
         
         results.append(
             InlineQueryResultArticle(
-                id="correct_code",
-                title="✅ FRAGMENT AUTHENTICATION - CORRECT CODE",
-                description="Kode benar! Klik untuk mengirim offer",
+                id=generate_unique_id(user_id, "not_owner"),
+                title="❌ ACCESS DENIED",
+                description="This feature is for owners only",
+                input_message_content=InputTextMessageContent(
+                    message_text=(
+                        "🚫 **Access Denied**\n\n"
+                        "This feature is only available for verified owners.\n\n"
+                        f"**Your User ID:** `{user_id}`\n"
+                        "**Status:** Not authorized"
+                    ),
+                    parse_mode="Markdown"
+                ),
+                thumbnail_url="https://img.icons8.com/color/96/000000/no-entry.png"
+            )
+        )
+    
+    # CASE 2: User adalah owner DAN kode benar
+    elif query == AUTH_CODE:
+        logger.info(f"User {user_id} is owner and provided CORRECT code - showing fragment auth")
+        
+        contact_url = f"https://t.me/{user.username}" if user.username else f"tg://user?id={user_id}"
+        
+        results.append(
+            InlineQueryResultArticle(
+                id=generate_unique_id(user_id, "correct_code"),
+                title="✅ FRAGMENT AUTHENTICATION",
+                description="Correct code! Click to send offer",
                 input_message_content=InputTextMessageContent(
                     message_text=(
                         "🔐 **Fragment Authentication**\n\n"
                         f"Direct offer to sell your username @{username}\n\n"
-                        f"✅ **Status:** Authenticated\n"
-                        f"👤 **Owner:** {username}\n"
-                        f"🆔 **User ID:** {user_id}"
+                        "**Status:** ✅ Authenticated\n"
+                        f"**Owner:** {username}\n"
+                        f"**User ID:** {user_id}"
                     ),
                     parse_mode="Markdown"
                 ),
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("📋 View Details", callback_data=f"details_{user_id}")],
-                    [InlineKeyboardButton("👤 Contact", url=f"https://t.me/{user.username}" if user.username else f"tg://user?id={user_id}")]
+                    [InlineKeyboardButton("👤 Contact Owner", url=contact_url)]
                 ]),
                 thumbnail_url="https://img.icons8.com/color/96/000000/verified-account.png"
             )
         )
     
-    # OPSI B: Jika kode salah TAPI user adalah owner
-    elif query != AUTH_CODE and user_id in OWNER_IDS and query != "":
-        logger.info(f"User {user_id} provided WRONG code: '{query}'")
-        
-        results.append(
-            InlineQueryResultArticle(
-                id="wrong_code",
-                title="❌ AUTHENTICATION FAILED - WRONG CODE",
-                description="Kode salah! Klik untuk instruksi",
-                input_message_content=InputTextMessageContent(
-                    message_text=(
-                        "❌ **Authentication Failed**\n\n"
-                        f"Kode yang Anda masukkan: `{query}`\n"
-                        f"Kode yang benar: `{AUTH_CODE}`\n\n"
-                        "Silakan coba lagi dengan kode yang benar."
-                    ),
-                    parse_mode="Markdown"
-                )
-            )
-        )
-    
-    # OPSI C: Default - Instruksi authentication
+    # CASE 3: User adalah owner TAPI kode salah/kosong
     else:
-        logger.info(f"Showing auth instructions for user {user_id}")
+        logger.info(f"User {user_id} is owner but provided WRONG/EMPTY code: '{query}'")
         
-        if user_id in OWNER_IDS:
-            description = f"Ketik kode: {AUTH_CODE}"
+        if query == "":
+            title = "🔐 AUTHENTICATION REQUIRED"
+            description = f"Type the code: {AUTH_CODE}"
             message_text = (
                 "🔐 **Authentication Required**\n\n"
-                f"Ketik kode authentication setelah @username_bot\n\n"
-                f"**Kode yang benar:** `{AUTH_CODE}`\n"
-                f"**User ID Anda:** `{user_id}`\n\n"
-                "Contoh: `@username_bot 1234`"
+                f"Please type the authentication code after @username_bot\n\n"
+                f"**Correct code:** `{AUTH_CODE}`\n"
+                f"**Your User ID:** `{user_id}`\n\n"
+                "Example: `@username_bot 1234`"
             )
+            thumbnail = "https://img.icons8.com/color/96/000000/lock--v1.png"
         else:
-            description = "Access denied - Owner only"
+            title = "❌ WRONG CODE"
+            description = f"Wrong code! Correct: {AUTH_CODE}"
             message_text = (
-                "🚫 **Access Denied**\n\n"
-                "Fitur ini hanya tersedia untuk verified owners.\n\n"
-                f"**User ID Anda:** `{user_id}`"
+                "❌ **Wrong Authentication Code**\n\n"
+                f"Code you entered: `{query}`\n"
+                f"Correct code: `{AUTH_CODE}`\n\n"
+                f"**Your User ID:** `{user_id}`\n"
+                "**Status:** Owner (but wrong code)\n\n"
+                "Please try again with the correct code."
             )
+            thumbnail = "https://img.icons8.com/color/96/000000/cancel.png"
         
         results.append(
             InlineQueryResultArticle(
-                id="auth_required",
-                title="🔐 AUTHENTICATION REQUIRED",
+                id=generate_unique_id(user_id, f"wrong_{query}"),
+                title=title,
                 description=description,
                 input_message_content=InputTextMessageContent(
                     message_text=message_text,
                     parse_mode="Markdown"
                 ),
-                thumbnail_url="https://img.icons8.com/color/96/000000/lock--v1.png"
+                thumbnail_url=thumbnail
             )
         )
     
     try:
+        # CACHE_TIME = 1 untuk menghindari cache, IS_PERSONAL = True untuk hasil per user
         await update.inline_query.answer(results, cache_time=1, is_personal=True)
-        logger.info(f"Sent {len(results)} results to user {user_id}")
+        logger.info(f"Successfully sent {len(results)} results to user {user_id}")
     except error.TelegramError as e:
         logger.error(f"Error answering inline query: {e}")
 
@@ -187,7 +206,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"**Status:** Available\n"
                     f"**Authentication:** Verified ✅\n"
                     f"**Security Level:** High\n\n"
-                    "*Secure fragment authentication offer*"
+                    "*This is a secure fragment authentication offer*"
                 )
                 
                 await query.edit_message_text(
@@ -208,12 +227,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data == "back":
         try:
             username = user.username or user.first_name
+            contact_url = f"https://t.me/{user.username}" if user.username else f"tg://user?id={user_id}"
+            
             await query.edit_message_text(
                 text=f"🔐 **Fragment Authentication**\n\nDirect offer to sell your username @{username}",
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("📋 View Details", callback_data=f"details_{user_id}")],
-                    [InlineKeyboardButton("👤 Contact", url=f"https://t.me/{user.username}" if user.username else f"tg://user?id={user_id}")]
+                    [InlineKeyboardButton("👤 Contact Owner", url=contact_url)]
                 ])
             )
         except Exception as e:
@@ -235,9 +256,10 @@ def main():
         logger.error("BOT_TOKEN tidak ditemukan!")
         sys.exit(1)
         
-    logger.info(f"Starting bot...")
+    logger.info(f"Starting bot with:")
     logger.info(f"OWNER_IDS: {OWNER_IDS}")
     logger.info(f"AUTH_CODE: {AUTH_CODE}")
+    logger.info(f"Sample command: @your_bot_username {AUTH_CODE}")
 
     application = Application.builder().token(BOT_TOKEN).build()
     

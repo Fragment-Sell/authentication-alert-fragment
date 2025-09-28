@@ -5,6 +5,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, InlineQ
 from telegram.ext import Application, CommandHandler, InlineQueryHandler, CallbackQueryHandler, ContextTypes
 import uuid
 import hashlib
+import urllib.parse # Import ini sudah ada di code asli, tapi saya pertahankan di sini sebagai referensi.
 
 # Configuration
 BOT_TOKEN = os.getenv('BOT_TOKEN', '').strip()
@@ -29,14 +30,15 @@ def escape_username(username: str) -> str:
     return username.replace('_', '_​')  # underscore + zero-width space
 
 def generate_details_url(username: str) -> str:
-    """Generate URL untuk view details"""
+    """Generate URL untuk view details. Diubah agar hanya mengembalikan WEBHOOK_URL jika ada, tanpa parameter."""
     if WEBHOOK_URL:
-        # Encode username untuk URL
-        import urllib.parse
-        encoded_username = urllib.parse.quote(username)
-        return f"{WEBHOOK_URL}/details?username={encoded_username}"
+        # Mengembalikan WEBHOOK_URL saja, tanpa '/details?username={encoded_username}'
+        return WEBHOOK_URL
     else:
-        return f"https://example.com/details?username={username}"
+        # Fallback URL dipertahankan sesuai fungsi lama (hanya ganti link contohnya saja untuk mencerminkan perubahan)
+        # Catatan: Fungsi ini tetap menerima 'username' sebagai argumen untuk kompatibilitas,
+        # meskipun argumen ini tidak lagi digunakan untuk pembuatan URL.
+        return "https://example.com/details-page-default"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler untuk command /start"""
@@ -92,6 +94,7 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
         escaped_username = escape_username(target_username)
         
         # Generate URL untuk view details
+        # URL ini sekarang hanya mengarah ke WEBHOOK_URL
         details_url = generate_details_url(target_username)
         
         # Format pesan dengan HTML parsing

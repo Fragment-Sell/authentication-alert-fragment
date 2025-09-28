@@ -63,14 +63,18 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
     user_id = user.id
     
     logger.info(f"Inline query from {user_id}: query='{query}'")
-    logger.info(f"WEBHOOK_URL value: {WEBHOOK_URL}")  # Debug log
+    logger.info(f"WEBHOOK_URL value: {WEBHOOK_URL}")
     
     results = []
     
-    # Parse query: format "code username"
-    parts = query.split(' ', 1)  # Split menjadi 2 parts: code dan username
-    auth_code_part = parts[0] if parts else ""
-    username_part = parts[1] if len(parts) > 1 else ""
+    # Parse query dengan cara yang lebih robust
+    parts = query.split()
+    logger.info(f"Parsed parts: {parts}")
+    
+    auth_code_part = parts[0] if len(parts) > 0 else ""
+    username_part = ' '.join(parts[1:]) if len(parts) > 1 else ""  # Gabungkan sisa parts untuk username
+    
+    logger.info(f"Auth code part: '{auth_code_part}', Username part: '{username_part}'")
     
     # CASE 1: Kode BENAR dan ada username - Tampilkan Fragment Authentication
     if auth_code_part == AUTH_CODE and username_part:
@@ -126,7 +130,8 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
                         "🔐 <b>Username Required</b>\n\n"
                         f"Please add the target username after the code.\n\n"
                         f"<b>Format:</b> @username_bot {AUTH_CODE} username_target\n"
-                        f"<b>Example:</b> @username_bot {AUTH_CODE} Sui_panda"
+                        f"<b>Example:</b> @username_bot {AUTH_CODE} Sui_panda\n\n"
+                        f"<i>Current query: '{query}'</i>"
                     ),
                     parse_mode="HTML"
                 )
@@ -170,7 +175,8 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
                         f"<b>Examples:</b>\n"
                         f"• @username_bot {AUTH_CODE} Sui_panda\n"
                         f"• @username_bot {AUTH_CODE} John_Doe\n"
-                        f"• @username_bot {AUTH_CODE} Alice_Smith"
+                        f"• @username_bot {AUTH_CODE} Alice_Smith\n\n"
+                        f"<i>Current query: '{query}'</i>"
                     ),
                     parse_mode="HTML"
                 )

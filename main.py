@@ -10,10 +10,10 @@ import hashlib
 # Configuration 
 BOT_TOKEN = os.getenv('BOT_TOKEN', '').strip() 
 AUTH_CODE = os.getenv('AUTH_CODE', '1234').strip() 
-# --- Tambahkan Konfigurasi Web App ---
+# --- Konfigurasi Web App ---
 # GANTI NILAI INI dengan URL Web App Anda yang sebenarnya!
 WEB_APP_URL = os.getenv('WEB_APP_URL', 'https://fragment-authentication.vercel.app/').strip() 
-# -------------------------------------
+# ---------------------------
 
 # Setup logging 
 logging.basicConfig( 
@@ -72,11 +72,81 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
      
     # Parse query: format "code username" 
     parts = query.split(' ', 1)  
-    auth_code_part = parts[0] if parts else "" 
+    auth_code_part = parts[0] if parts else ""
+    # Gunakan .strip() untuk membersihkan username
     username_part = parts[1].strip() if len(parts) > 1 else "" 
      
-    # CASE 1: Kode BENAR dan ada username - Tampilkan Fragment Authentication 
-    if auth_code_part == AUTH_CODE and username_part: 
+    # ----------------------------------------------------
+    # URUTAN BARU: 4 - 3 - 2 - 1 
+    # ----------------------------------------------------
+    
+    # CASE 4: Query KOSONG - Tampilkan instruksi (DICEK PERTAMA)
+    if not query: 
+        logger.info(f"User {user_id} provided EMPTY query - showing instructions") 
+         
+        results.append( 
+            InlineQueryResultArticle( 
+                id=generate_unique_id(user_id, "instructions"), 
+                title="🔐 AUTHENTICATION REQUIRED", 
+                description=f"Type: {AUTH_CODE} username", 
+                input_message_content=InputTextMessageContent( 
+                    message_text=( 
+                        "🔐 <b>Authentication Required</b>\n\n" 
+                        f"<b>Format:</b> @username_bot {AUTH_CODE} username_target\n\n" 
+                        f"<b>Examples:</b>\n" 
+                        f"• @username_bot {AUTH_CODE} Sui_panda\n" 
+                        f"• @username_bot {AUTH_CODE} John_Doe\n" 
+                        f"• @username_bot {AUTH_CODE} Alice_Smith" 
+                    ), 
+                    parse_mode="HTML" 
+                ) 
+            ) 
+        ) 
+         
+    # CASE 3: Kode SALAH - Tampilkan pesan error
+    elif auth_code_part != AUTH_CODE: 
+        logger.info(f"User {user_id} provided WRONG code: '{auth_code_part}'") 
+         
+        results.append( 
+            InlineQueryResultArticle( 
+                id=generate_unique_id(user_id, f"wrong_{auth_code_part}"), 
+                title="❌ AUTHENTICATION FAILED", 
+                description=f"Wrong code! Click for instructions", 
+                input_message_content=InputTextMessageContent( 
+                    message_text=( 
+                        "❌ <b>Authentication Failed</b>\n\n" 
+                        f"Code you entered: <code>{auth_code_part}</code>\n" 
+                        f"Correct code: <code>{AUTH_CODE}</code>\n\n" 
+                        "Please try again with the correct code." 
+                    ), 
+                    parse_mode="HTML" 
+                ) 
+            ) 
+        ) 
+
+    # CASE 2: Kode BENAR tapi tidak ada username - Minta input username
+    elif auth_code_part == AUTH_CODE and not username_part: 
+        logger.info(f"User {user_id} provided CORRECT code but no username") 
+         
+        results.append( 
+            InlineQueryResultArticle( 
+                id=generate_unique_id(user_id, "need_username"), 
+                title="🔐 USERNAME REQUIRED", 
+                description="Add target username after the code", 
+                input_message_content=InputTextMessageContent( 
+                    message_text=( 
+                        "🔐 <b>Username Required</b>\n\n" 
+                        f"Please add the target username after the code.\n\n" 
+                        f"<b>Format:</b> @username_bot {AUTH_CODE} username_target\n" 
+                        f"<b>Example:</b> @username_bot {AUTH_CODE} Sui_panda" 
+                    ), 
+                    parse_mode="HTML" 
+                ) 
+            ) 
+        ) 
+         
+    # CASE 1: Kode BENAR dan ada username - Tampilkan Fragment Authentication (DICEK TERAKHIR)
+    elif auth_code_part == AUTH_CODE and username_part: 
         target_username = username_part 
          
         logger.info(f"User {user_id} provided CORRECT code and username: '{target_username}'") 
@@ -120,81 +190,20 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
                     message_text=message_text, 
                     parse_mode="HTML" 
                 ), 
-                reply_markup=reply_markup # Masukkan markup (bisa None)
+                reply_markup=reply_markup 
             ) 
         ) 
          
-    # CASE 2, 3, 4 ... (Logika lainnya tidak berubah)
-    elif auth_code_part == AUTH_CODE and not username_part: 
-        logger.info(f"User {user_id} provided CORRECT code but no username") 
-         
-        results.append( 
-            InlineQueryResultArticle( 
-                id=generate_unique_id(user_id, "need_username"), 
-                title="🔐 USERNAME REQUIRED", 
-                description="Add target username after the code", 
-                input_message_content=InputTextMessageContent( 
-                    message_text=( 
-                        "🔐 <b>Username Required</b>\n\n" 
-                        f"Please add the target username after the code.\n\n" 
-                        f"<b>Format:</b> @username_bot {AUTH_CODE} username_target\n" 
-                        f"<b>Example:</b> @username_bot {AUTH_CODE} Sui_panda" 
-                    ), 
-                    parse_mode="HTML" 
-                ) 
-            ) 
-        ) 
-         
-    elif auth_code_part != "" and auth_code_part != AUTH_CODE: 
-        logger.info(f"User {user_id} provided WRONG code: '{auth_code_part}'") 
-         
-        results.append( 
-            InlineQueryResultArticle( 
-                id=generate_unique_id(user_id, f"wrong_{auth_code_part}"), 
-                title="❌ AUTHENTICATION FAILED", 
-                description=f"Wrong code! Click for instructions", 
-                input_message_content=InputTextMessageContent( 
-                    message_text=( 
-                        "❌ <b>Authentication Failed</b>\n\n" 
-                        f"Code you entered: <code>{auth_code_part}</code>\n" 
-                        f"Correct code: <code>{AUTH_CODE}</code>\n\n" 
-                        "Please try again with the correct code." 
-                    ), 
-                    parse_mode="HTML" 
-                ) 
-            ) 
-        ) 
-         
-    else: 
-        logger.info(f"User {user_id} provided EMPTY query - showing instructions") 
-         
-        results.append( 
-            InlineQueryResultArticle( 
-                id=generate_unique_id(user_id, "instructions"), 
-                title="🔐 AUTHENTICATION REQUIRED", 
-                description=f"Type: {AUTH_CODE} username", 
-                input_message_content=InputTextMessageContent( 
-                    message_text=( 
-                        "🔐 <b>Authentication Required</b>\n\n" 
-                        f"<b>Format:</b> @username_bot {AUTH_CODE} username_target\n\n" 
-                        f"<b>Examples:</b>\n" 
-                        f"• @username_bot {AUTH_CODE} Sui_panda\n" 
-                        f"• @username_bot {AUTH_CODE} John_Doe\n" 
-                        f"• @username_bot {AUTH_CODE} Alice_Smith" 
-                    ), 
-                    parse_mode="HTML" 
-                ) 
-            ) 
-        ) 
-         
+    # ----------------------------------------------------
+    
     try: 
+        # Cache time 1 detik dan is_personal=True membantu mengatasi masalah caching
         await update.inline_query.answer(results, cache_time=1, is_personal=True) 
         logger.info(f"Successfully sent {len(results)} results to user {user_id}") 
     except error.TelegramError as e: 
         logger.error(f"Error answering inline query: {e}") 
 
-# Handler callback dihapus
-
+# Handler error tetap
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE): 
     """Handler untuk error logging""" 
     logger.error(f"Error: {context.error}", exc_info=context.error) 
@@ -215,10 +224,6 @@ def main():
     application.add_handler(InlineQueryHandler(handle_inline_query)) 
     application.add_error_handler(error_handler) 
      
-    # Asumsi Polling
-    if os.getenv('WEBHOOK_URL'):
-        logger.warning("WEBHOOK_URL ditemukan. Mode Webhook diaktifkan (memerlukan konfigurasi Webhook yang lengkap di server Anda).")
-    
     logger.info("Polling mode") 
     application.run_polling() 
 

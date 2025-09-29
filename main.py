@@ -12,9 +12,6 @@ BOT_TOKEN = os.getenv('BOT_TOKEN', '').strip()
 AUTH_CODE = os.getenv('AUTH_CODE', '1234').strip()
 PORT = int(os.getenv('PORT', 8443))
 WEBHOOK_URL = os.getenv('WEBHOOK_URL', '').strip()
-### MODIFIKASI: Tambahkan URL Mini App ###
-MINI_APP_URL = os.getenv('MINI_APP_URL', 'https://your-mini-app-url.com').strip() 
-### END MODIFIKASI ###
 
 # Setup logging
 logging.basicConfig(
@@ -33,7 +30,7 @@ def escape_username(username: str) -> str:
     return username.replace('_', '_​')  # underscore + zero-width space
 
 def generate_details_url(username: str) -> str:
-    """Generate URL untuk view details (TIDAK DIGUNAKAN LAGI UNTUK TOMBOL BARU)"""
+    """Generate URL untuk view details"""
     if WEBHOOK_URL:
         # Encode username untuk URL
         encoded_username = urllib.parse.quote(username)
@@ -94,8 +91,8 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
         # Escape username untuk menghindari masalah formatting
         escaped_username = escape_username(target_username)
         
-        # NOTE: details_url dari fungsi generate_details_url tidak lagi digunakan untuk tombol Mini App
-        # details_url = generate_details_url(target_username)
+        # Generate URL untuk view details
+        details_url = generate_details_url(target_username)
         
         # Format pesan dengan HTML parsing
         message_text = (
@@ -103,7 +100,7 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"Direct offer to sell your username: <code>{target_username}</code>\n\n"
             f"<b>Status:</b> ✅ Authenticated\n"
             f"<b>Target:</b> {escaped_username}\n\n"
-            f"<i>Click 'View Detail' to open Mini App</i>" ### Perubahan teks ###
+            f"<i>Click 'View Details' for more information</i>"
         )
         
         results.append(
@@ -115,11 +112,10 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
                     message_text=message_text,
                     parse_mode="HTML"
                 ),
-                ### MODIFIKASI: Ganti tombol URL biasa menjadi tombol Web App ###
+                # Hanya tombol 'View Details' yang tersisa
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("📋 View Detail", web_app={"url": f"{MINI_APP_URL}?username={target_username}"})],
+                    [InlineKeyboardButton("📋 View Details", url=details_url)],
                 ])
-                ### END MODIFIKASI ###
             )
         )
     
@@ -229,9 +225,6 @@ def main():
     logger.info(f"Starting Fragment Authentication Bot")
     logger.info(f"AUTH_CODE: {AUTH_CODE}")
     logger.info(f"WEBHOOK_URL: {WEBHOOK_URL}")
-    ### MODIFIKASI: Log Mini App URL ###
-    logger.info(f"MINI_APP_URL: {MINI_APP_URL}")
-    ### END MODIFIKASI ###
 
     application = Application.builder().token(BOT_TOKEN).build()
     

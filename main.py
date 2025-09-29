@@ -1,7 +1,7 @@
 import logging 
 import os 
 import sys 
-# --- Perubahan: Tambahkan WebAppInfo ---
+# Pastikan WebAppInfo diimpor
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, InlineQueryResultArticle, InputTextMessageContent, error, WebAppInfo 
 from telegram.ext import Application, CommandHandler, InlineQueryHandler, CallbackQueryHandler, ContextTypes 
 import uuid 
@@ -13,10 +13,8 @@ BOT_TOKEN = os.getenv('BOT_TOKEN', '').strip()
 AUTH_CODE = os.getenv('AUTH_CODE', '1234').strip() 
 PORT = int(os.getenv('PORT', 8443)) 
 WEBHOOK_URL = os.getenv('WEBHOOK_URL', '').strip() 
-# --- Perubahan: Tambahkan Konfigurasi WEB_APP_URL ---
-# GANTI INI dengan URL Web App Anda yang sebenarnya
+# Atur nilai default menjadi string kosong, harus diisi di environment variable
 WEB_APP_URL = os.getenv('WEB_APP_URL', '').strip() 
-# -------------------------------------------------
 
 # Setup logging 
 logging.basicConfig( 
@@ -90,7 +88,7 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
     # CASE 1: Kode BENAR dan ada username - Tampilkan Fragment Authentication 
     if auth_code_part == AUTH_CODE and username_part: 
         # Pertahankan format asli username (case sensitive) 
-        target_username = username_part.strip() 
+        target_username = username_part 
          
         logger.info(f"User {user_id} provided CORRECT code and username: '{target_username}'") 
          
@@ -100,18 +98,23 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
         # Generate URL untuk view details 
         details_url = generate_details_url(target_username) 
          
-        # --- Perubahan: Membangun Keyboard ---
+        # --- Membangun Keyboard ---
         keyboard_buttons = [
             # Tombol 1: View Details (URL Biasa)
             [InlineKeyboardButton("📋 View Details", url=details_url)], 
         ]
         
+        # HANYA tambahkan tombol Web App jika WEB_APP_URL TIDAK kosong
         if WEB_APP_URL:
             # Tombol 2: Buka Mini App (Menggunakan WebAppInfo)
-            keyboard_buttons.append(
-                [InlineKeyboardButton("🚀 Buka Mini App", web_app=WebAppInfo(url=WEB_APP_URL))]
-            )
-        # -------------------------------------
+            try:
+                keyboard_buttons.append(
+                    [InlineKeyboardButton("🚀 Buka Mini App", web_app=WebAppInfo(url=WEB_APP_URL))]
+                )
+            except Exception as e:
+                # Log jika ada error saat membuat tombol WebAppInfo
+                logger.error(f"Error creating WebAppInfo button: {e}") 
+        # --------------------------
          
         # Format pesan dengan HTML parsing 
         message_text = ( 
@@ -131,7 +134,6 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
                     message_text=message_text, 
                     parse_mode="HTML" 
                 ), 
-                # Gunakan keyboard_buttons yang sudah diperbarui
                 reply_markup=InlineKeyboardMarkup(keyboard_buttons) 
             ) 
         ) 
@@ -202,7 +204,6 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
         ) 
          
     try: 
-        # Cache time diturunkan untuk meminimalisir masalah caching Telegram
         await update.inline_query.answer(results, cache_time=1, is_personal=True) 
         logger.info(f"Successfully sent {len(results)} results to user {user_id}") 
     except error.TelegramError as e: 
@@ -241,7 +242,7 @@ def main():
     logger.info(f"Starting Fragment Authentication Bot") 
     logger.info(f"AUTH_CODE: {AUTH_CODE}") 
     logger.info(f"WEBHOOK_URL: {WEBHOOK_URL}") 
-    logger.info(f"WEB_APP_URL: {WEB_APP_URL}") # <--- Log baru
+    logger.info(f"WEB_APP_URL: {WEB_APP_URL}") # Cek apakah URL terbaca
  
     application = Application.builder().token(BOT_TOKEN).build() 
      

@@ -1,8 +1,8 @@
 import logging 
 import os 
 import sys 
-# Import disederhanakan, hanya menyisakan yang diperlukan
-from telegram import Update, InlineQueryResultArticle, InputTextMessageContent, error, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo # <-- DITAMBAHKAN
+from urllib.parse import quote_plus # <--- Import tambahan untuk pengodean URL
+from telegram import Update, InlineQueryResultArticle, InputTextMessageContent, error, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo 
 from telegram.ext import Application, CommandHandler, InlineQueryHandler, ContextTypes 
 import uuid 
 import hashlib 
@@ -10,10 +10,9 @@ import hashlib
 # Configuration 
 BOT_TOKEN = os.getenv('BOT_TOKEN', '').strip() 
 AUTH_CODE = os.getenv('AUTH_CODE', '1234').strip() 
-# *CATATAN PENTING:* # Anda harus menentukan URL WebApp Anda di sini. Ini bisa berupa URL apa pun
-# yang dapat diakses oleh browser (misalnya, https://nama-bot.herokuapp.com/web-app)
-# Pastikan WebApp tersebut telah dikonfigurasi di BotFather.
-WEBAPP_URL = os.getenv('WEBAPP_URL', 'https://www.google.com/') # <-- DITAMBAHKAN (Ganti dengan URL WebApp Anda)
+# Ganti nilai default ini dengan URL WebApp Anda yang valid (HARUS HTTPS)
+# Contoh: https://your-webapp-name.up.railway.app/
+WEBAPP_URL = os.getenv('WEBAPP_URL', 'https://example.com/web_app_entrypoint') 
 
 # Setup logging 
 logging.basicConfig( 
@@ -65,6 +64,7 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
     query = update.inline_query.query.strip() 
     user = update.inline_query.from_user 
     user_id = user.id 
+    bot_username = context.bot_data.get('username', 'username_bot')
     
     logger.info(f"Inline query from {user_id}: query='{query}'") 
     
@@ -73,7 +73,6 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
     # Parse query: format "code username" 
     parts = query.split(' ', 1)
     auth_code_part = parts[0] if parts else "" 
-    # Pastikan username di-strip untuk parsing yang handal
     username_part = parts[1].strip() if len(parts) > 1 else "" 
     
     # CASE 1: Kode BENAR dan ada username - Tampilkan Fragment Authentication DENGAN TOMBOL WEBAPP 
@@ -84,14 +83,20 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         escaped_username = escape_username(target_username) 
         
-        # --- LOGIKA TOMBOL/MARKUP DITAMBAHKAN DI SINI ---
+        # --- LOGIKA TOMBOL/MARKUP WEBAPP ---
         
-        # 1. Buat Inline Keyboard Button
-        # WebAppInfo digunakan untuk mengarahkan ke WebApp bot
-        web_app_info = WebAppInfo(url=f"{WEBAPP_URL}?username={target_username}&user_id={user_id}") 
+        # Encode username dan user_id untuk URL yang aman
+        encoded_username = quote_plus(target_username)
+        encoded_user_id = quote_plus(str(user_id))
+        
+        # URL LENGKAP yang akan dibuka WebApp
+        web_app_url_with_params = f"{WEBAPP_URL}?username={encoded_username}&user_id={encoded_user_id}"
+
+        # 1. Buat Inline Keyboard Button dengan WebAppInfo
+        web_app_info = WebAppInfo(url=web_app_url_with_params) 
         button = InlineKeyboardButton(
             text="View Detail", 
-            web_app=web_app_info # Menggunakan web_app
+            web_app=web_app_info 
         )
         
         # 2. Buat Inline Keyboard Markup
@@ -134,8 +139,8 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
                     message_text=( 
                         "🔐 <b>Username Required</b>\n\n" 
                         f"Please add the target username after the code.\n\n" 
-                        f"<b>Format:</b> @username_bot {AUTH_CODE} username_target\n" 
-                        f"<b>Example:</b> @username_bot {AUTH_CODE} Sui_panda" 
+                        f"<b>Format:</b> @{bot_username} {AUTH_CODE} username_target\n" 
+                        f"<b>Example:</b> @{bot_username} {AUTH_CODE} Sui_panda" 
                     ), 
                     parse_mode="HTML" 
                 ) 
@@ -163,10 +168,9 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
             ) 
         ) 
         
-    # CASE 4: Query KOSONG - Tampilkan instruksi 
+    # CASE 4: Query KOSONG atau Tidak Sesuai Format - Tampilkan instruksi 
     else: 
-        bot_username = (await context.bot.get_me()).username if not context.bot_data.get('username') else context.bot_data['username']
-        logger.info(f"User {user_id} provided EMPTY query - showing instructions") 
+        logger.info(f"User {user_id} provided EMPTY or badly formatted query - showing instructions") 
         
         results.append( 
             InlineQueryResultArticle( 
@@ -188,14 +192,28 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
         ) 
         
     try: 
+        # Coba jawab inline query
         await update.inline_query.answer(results, cache_time=1, is_personal=True) 
         logger.info(f"Successfully sent {len(results)} results to user {user_id}") 
     except error.TelegramError as e: 
-        logger.error(f"Error answering inline query: {e}") 
+        logger.error(f"Error answering inline query for user {user_id}: {e}") 
+        # Tambahkan debug log untuk melihat apakah ada masalah di objek results
+        logger.debug(f"Results object content: {results}")
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE): 
     """Handler untuk error logging""" 
     logger.error(f"Error: {context.error}", exc_info=context.error) 
+
+async def set_bot_username(app: Application):
+    """Fungsi yang berjalan saat startup untuk mengambil username bot dan menyimpannya."""
+    try:
+        bot_info = await app.bot.get_me()
+        app.bot_data['username'] = bot_info.username
+        logger.info(f"Bot Username set to: @{bot_info.username}")
+    except Exception as e:
+        logger.error(f"Failed to get bot info: {e}")
+        app.bot_data['username'] = 'UNKNOWN_BOT'
+
 
 def main(): 
     """Main function""" 
@@ -203,33 +221,29 @@ def main():
         logger.error("BOT_TOKEN tidak ditemukan!") 
         sys.exit(1) 
         
-    logger.info(f"Starting Fragment Authentication Bot") 
-    logger.info(f"AUTH_CODE: {AUTH_CODE}") 
-    logger.info(f"WEBAPP_URL: {WEBAPP_URL}") # <-- DITAMBAHKAN
+    logger.info("====================================")
+    logger.info("  Starting Fragment Authentication Bot") 
+    logger.info(f"  AUTH_CODE: {AUTH_CODE}") 
+    logger.info(f"  WEBAPP_URL: {WEBAPP_URL}") 
+    logger.info("====================================")
     
     application = Application.builder().token(BOT_TOKEN).build() 
+    
+    # Run post_init function to get bot username before running handlers
+    application.post_init = set_bot_username
     
     application.add_handler(CommandHandler("start", start)) 
     application.add_handler(InlineQueryHandler(handle_inline_query)) 
     application.add_error_handler(error_handler) 
     
-    # Ambil username bot dan simpan di context_data untuk digunakan di handle_inline_query
-    async def set_bot_username(app: Application):
-        bot_info = await app.bot.get_me()
-        app.bot_data['username'] = bot_info.username
-
-    # Jalankan function untuk mendapatkan username sebelum loop utama
-    application.post_init = set_bot_username
-    
     # Logika Webhook/Polling
-    if os.getenv('WEBHOOK_URL'):
-        # Karena konfigurasinya dihapus, ini hanya peringatan
-        logger.warning("WEBHOOK_URL ditemukan. Mode Webhook mungkin memerlukan konfigurasi PORT dan URL yang tepat.")
-        logger.info("Polling mode (as fallback)") 
-        application.run_polling() 
-    else: 
-        logger.info("Polling mode") 
-        application.run_polling() 
+    # Kami akan selalu menggunakan polling, kecuali konfigurasi webhook spesifik dikembalikan.
+    logger.info("Polling mode activated. Listening for updates...") 
+    try:
+        application.run_polling(poll_interval=3)
+    except Exception as e:
+        logger.error(f"Application failed to run polling: {e}")
+
 
 if __name__ == "__main__": 
     main()

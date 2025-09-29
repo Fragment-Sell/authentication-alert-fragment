@@ -2,18 +2,18 @@ import logging
 import os 
 import sys 
 # Import disederhanakan, hanya menyisakan yang diperlukan
-from telegram import Update, InlineQueryResultArticle, InputTextMessageContent, error 
+from telegram import Update, InlineQueryResultArticle, InputTextMessageContent, error, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo # <-- DITAMBAHKAN
 from telegram.ext import Application, CommandHandler, InlineQueryHandler, ContextTypes 
 import uuid 
 import hashlib 
-# urllib.parse dihapus karena tidak lagi membuat URL
-# InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo, CallbackQueryHandler dihapus
 
 # Configuration 
 BOT_TOKEN = os.getenv('BOT_TOKEN', '').strip() 
 AUTH_CODE = os.getenv('AUTH_CODE', '1234').strip() 
-# Variabel yang tidak relevan (PORT, WEBHOOK_URL) dihapus
-# Jika Anda tetap menggunakan Webhook, Anda harus mengembalikan variabel WEBHOOK_URL dan PORT.
+# *CATATAN PENTING:* # Anda harus menentukan URL WebApp Anda di sini. Ini bisa berupa URL apa pun
+# yang dapat diakses oleh browser (misalnya, https://nama-bot.herokuapp.com/web-app)
+# Pastikan WebApp tersebut telah dikonfigurasi di BotFather.
+WEBAPP_URL = os.getenv('WEBAPP_URL', 'https://www.google.com/') # <-- DITAMBAHKAN (Ganti dengan URL WebApp Anda)
 
 # Setup logging 
 logging.basicConfig( 
@@ -31,18 +31,17 @@ def generate_unique_id(user_id: int, query: str) -> str:
 def escape_username(username: str) -> str: 
     """Escape karakter khusus untuk menghindari masalah formatting""" 
     # underscore + zero-width space
-    return username.replace('_', '_​')  
+    return username.replace('_', '_​')
 
-# Fungsi generate_details_url dihapus
 # ----------------------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE): 
     """Handler untuk command /start""" 
     if not update.message: 
         return 
-         
+    
     bot_username = (await context.bot.get_me()).username 
-     
+    
     welcome_text = ( 
         "👋 **Fragment Authentication Bot**\n\n" 
         "**Cara menggunakan:**\n" 
@@ -52,7 +51,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"**Format:** `@{bot_username} [kode] [username]`\n" 
         f"**Kode auth:** `{AUTH_CODE}`\n" 
     ) 
-     
+    
     try: 
         await update.message.reply_text(welcome_text, parse_mode="Markdown") 
     except error.TelegramError as e: 
@@ -62,38 +61,53 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
     """Handler untuk inline query (@bot)""" 
     if not update.inline_query: 
         return 
-         
+    
     query = update.inline_query.query.strip() 
     user = update.inline_query.from_user 
     user_id = user.id 
-     
+    
     logger.info(f"Inline query from {user_id}: query='{query}'") 
-     
+    
     results = [] 
-     
+    
     # Parse query: format "code username" 
-    parts = query.split(' ', 1)  
+    parts = query.split(' ', 1)
     auth_code_part = parts[0] if parts else "" 
     # Pastikan username di-strip untuk parsing yang handal
     username_part = parts[1].strip() if len(parts) > 1 else "" 
-     
-    # CASE 1: Kode BENAR dan ada username - Tampilkan Fragment Authentication 
+    
+    # CASE 1: Kode BENAR dan ada username - Tampilkan Fragment Authentication DENGAN TOMBOL WEBAPP 
     if auth_code_part == AUTH_CODE and username_part: 
         target_username = username_part 
-         
+        
         logger.info(f"User {user_id} provided CORRECT code and username: '{target_username}'") 
-         
+        
         escaped_username = escape_username(target_username) 
-         
-        # Format pesan dengan HTML parsing (Tanpa tombol/markup)
+        
+        # --- LOGIKA TOMBOL/MARKUP DITAMBAHKAN DI SINI ---
+        
+        # 1. Buat Inline Keyboard Button
+        # WebAppInfo digunakan untuk mengarahkan ke WebApp bot
+        web_app_info = WebAppInfo(url=f"{WEBAPP_URL}?username={target_username}&user_id={user_id}") 
+        button = InlineKeyboardButton(
+            text="View Detail", 
+            web_app=web_app_info # Menggunakan web_app
+        )
+        
+        # 2. Buat Inline Keyboard Markup
+        reply_markup = InlineKeyboardMarkup([[button]])
+        
+        # --- END LOGIKA TOMBOL/MARKUP ---
+
+        # Format pesan dengan HTML parsing 
         message_text = ( 
             "🔐 <b>Fragment Authentication</b>\n\n" 
             f"Direct offer to sell your username: <code>{target_username}</code>\n\n" 
             f"<b>Status:</b> ✅ Authenticated\n" 
             f"<b>Target:</b> {escaped_username}\n\n" 
-            f"<i>Pesan ini berhasil dikirim.</i>" 
+            f"<i>Pesan ini berhasil dikirim. Klik tombol di bawah untuk detail.</i>" 
         ) 
-         
+        
         results.append( 
             InlineQueryResultArticle( 
                 id=generate_unique_id(user_id, f"correct_{target_username}"), 
@@ -103,14 +117,14 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
                     message_text=message_text, 
                     parse_mode="HTML" 
                 ), 
-                # reply_markup dihilangkan
+                reply_markup=reply_markup # <-- reply_markup DITAMBAHKAN
             ) 
         ) 
-         
+        
     # CASE 2: Kode BENAR tapi tidak ada username - Minta input username 
     elif auth_code_part == AUTH_CODE and not username_part: 
         logger.info(f"User {user_id} provided CORRECT code but no username") 
-         
+        
         results.append( 
             InlineQueryResultArticle( 
                 id=generate_unique_id(user_id, "need_username"), 
@@ -127,11 +141,11 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
                 ) 
             ) 
         ) 
-         
+        
     # CASE 3: Kode SALAH - Tampilkan pesan error 
     elif auth_code_part != "" and auth_code_part != AUTH_CODE: 
         logger.info(f"User {user_id} provided WRONG code: '{auth_code_part}'") 
-         
+        
         results.append( 
             InlineQueryResultArticle( 
                 id=generate_unique_id(user_id, f"wrong_{auth_code_part}"), 
@@ -148,11 +162,12 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
                 ) 
             ) 
         ) 
-         
+        
     # CASE 4: Query KOSONG - Tampilkan instruksi 
     else: 
+        bot_username = (await context.bot.get_me()).username if not context.bot_data.get('username') else context.bot_data['username']
         logger.info(f"User {user_id} provided EMPTY query - showing instructions") 
-         
+        
         results.append( 
             InlineQueryResultArticle( 
                 id=generate_unique_id(user_id, "instructions"), 
@@ -161,24 +176,22 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
                 input_message_content=InputTextMessageContent( 
                     message_text=( 
                         "🔐 <b>Authentication Required</b>\n\n" 
-                        f"<b>Format:</b> @username_bot {AUTH_CODE} username_target\n\n" 
+                        f"<b>Format:</b> @{bot_username} {AUTH_CODE} username_target\n\n" 
                         f"<b>Examples:</b>\n" 
-                        f"• @username_bot {AUTH_CODE} Sui_panda\n" 
-                        f"• @username_bot {AUTH_CODE} John_Doe\n" 
-                        f"• @username_bot {AUTH_CODE} Alice_Smith" 
+                        f"• @{bot_username} {AUTH_CODE} Sui_panda\n" 
+                        f"• @{bot_username} {AUTH_CODE} John_Doe\n" 
+                        f"• @{bot_username} {AUTH_CODE} Alice_Smith" 
                     ), 
                     parse_mode="HTML" 
                 ) 
             ) 
         ) 
-         
+        
     try: 
         await update.inline_query.answer(results, cache_time=1, is_personal=True) 
         logger.info(f"Successfully sent {len(results)} results to user {user_id}") 
     except error.TelegramError as e: 
         logger.error(f"Error answering inline query: {e}") 
-
-# Handler callback dihapus
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE): 
     """Handler untuk error logging""" 
@@ -189,26 +202,30 @@ def main():
     if not BOT_TOKEN: 
         logger.error("BOT_TOKEN tidak ditemukan!") 
         sys.exit(1) 
-         
+        
     logger.info(f"Starting Fragment Authentication Bot") 
     logger.info(f"AUTH_CODE: {AUTH_CODE}") 
-    # WEBHOOK_URL dihapus dari logging karena tidak relevan jika menggunakan Polling
- 
+    logger.info(f"WEBAPP_URL: {WEBAPP_URL}") # <-- DITAMBAHKAN
+    
     application = Application.builder().token(BOT_TOKEN).build() 
-     
+    
     application.add_handler(CommandHandler("start", start)) 
     application.add_handler(InlineQueryHandler(handle_inline_query)) 
-    # CallbackQueryHandler dihapus
     application.add_error_handler(error_handler) 
-     
-    # Logika Webhook/Polling disederhanakan 
-    # Asumsi: jika Anda tidak menentukan WEBHOOK_URL, Anda menggunakan polling.
+    
+    # Ambil username bot dan simpan di context_data untuk digunakan di handle_inline_query
+    async def set_bot_username(app: Application):
+        bot_info = await app.bot.get_me()
+        app.bot_data['username'] = bot_info.username
+
+    # Jalankan function untuk mendapatkan username sebelum loop utama
+    application.post_init = set_bot_username
+    
+    # Logika Webhook/Polling
     if os.getenv('WEBHOOK_URL'):
-        # Jika Anda benar-benar menggunakan webhook, pastikan Anda mengembalikan variabel WEBHOOK_URL dan PORT di bagian Configuration.
-        # Karena Anda tidak menyebutkan konfigurasinya, saya asumsikan Anda ingin kode berjalan sederhana.
+        # Karena konfigurasinya dihapus, ini hanya peringatan
         logger.warning("WEBHOOK_URL ditemukan. Mode Webhook mungkin memerlukan konfigurasi PORT dan URL yang tepat.")
-        # Jika Anda ingin menjalankan Polling (paling sederhana), gunakan blok 'else' di bawah.
-        logger.info("Polling mode") 
+        logger.info("Polling mode (as fallback)") 
         application.run_polling() 
     else: 
         logger.info("Polling mode") 

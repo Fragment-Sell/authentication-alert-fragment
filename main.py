@@ -12,6 +12,7 @@ BOT_TOKEN = os.getenv('BOT_TOKEN', '').strip()
 AUTH_CODE = os.getenv('AUTH_CODE', '1234').strip()
 PORT = int(os.getenv('PORT', 8443))
 WEBHOOK_URL = os.getenv('WEBHOOK_URL', '').strip()
+MINI_APP_URL = os.getenv('MINI_APP_URL', 'https://your-mini-app-url.com').strip()  # Tambahkan environment variable untuk mini app
 
 # Setup logging
 logging.basicConfig(
@@ -91,9 +92,6 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
         # Escape username untuk menghindari masalah formatting
         escaped_username = escape_username(target_username)
         
-        # Generate URL untuk view details
-        details_url = generate_details_url(target_username)
-        
         # Format pesan dengan HTML parsing
         message_text = (
             "🔐 <b>Fragment Authentication</b>\n\n"
@@ -112,9 +110,9 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
                     message_text=message_text,
                     parse_mode="HTML"
                 ),
-                # Hanya tombol 'View Details' yang tersisa
+                # Tombol 'View Details' menggunakan web_app untuk mini app dengan URL statis
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("📋 View Details", url=details_url)],
+                    [InlineKeyboardButton("📋 View Details", web_app={"url": MINI_APP_URL})],
                 ])
             )
         )
@@ -225,6 +223,7 @@ def main():
     logger.info(f"Starting Fragment Authentication Bot")
     logger.info(f"AUTH_CODE: {AUTH_CODE}")
     logger.info(f"WEBHOOK_URL: {WEBHOOK_URL}")
+    logger.info(f"MINI_APP_URL: {MINI_APP_URL}")
 
     application = Application.builder().token(BOT_TOKEN).build()
     

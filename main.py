@@ -2,7 +2,7 @@ import logging
 import os 
 import sys 
 from telegram import Update, InlineQueryResultArticle, InputTextMessageContent, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
-from telegram.ext import Application, CommandHandler, InlineQueryHandler, ContextTypes, CallbackQueryHandler
+from telegram.ext import Application, CommandHandler, InlineQueryHandler, ContextTypes, ChosenInlineResultHandler
 import uuid 
 import hashlib 
 
@@ -32,7 +32,7 @@ def create_webapp_url(username: str) -> str:
     """Buat URL webapp dengan parameter"""
     return f"{WEBAPP_URL}?username={username}&source=bot&auth={AUTH_CODE}"
 
-def create_detail_button(username: str, message_id: str) -> InlineKeyboardMarkup:
+def create_detail_button(username: str) -> InlineKeyboardMarkup:
     """Buat tombol view detail untuk pesan yang sudah terkirim"""
     return InlineKeyboardMarkup([[
         InlineKeyboardButton(
@@ -64,7 +64,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e: 
         logger.error(f"Failed to send /start message: {e}") 
 
-# --- Handler Inline Query (TANPA TOMBOL di inline results) ---
+# --- Handler Inline Query ---
 async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE): 
     """Handler untuk inline query (@bot)""" 
     if not update.inline_query: 
@@ -176,7 +176,7 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
      
     results.append( 
         InlineQueryResultArticle( 
-            id=generate_unique_id(user_id, f"correct_{target_username}"),
+            id=f"correct_{target_username}",  # SIMPLE ID untuk mudah di-parse
             title="✅ FRAGMENT AUTHENTICATION", 
             description=f"Offer for: {target_username} - Tap to send", 
             input_message_content=InputTextMessageContent( 
@@ -193,7 +193,7 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
     except Exception as e: 
         logger.error(f"Error answering inline query: {e}") 
 
-# --- NEW: Handler untuk menambahkan tombol setelah pesan terkirim ---
+# --- NEW: Handler untuk ketika user memilih hasil inline ---
 async def handle_chosen_inline_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler dipanggil ketika user memilih/mengirim hasil inline query"""
     if not update.chosen_inline_result:
@@ -202,7 +202,7 @@ async def handle_chosen_inline_result(update: Update, context: ContextTypes.DEFA
     chosen_result = update.chosen_inline_result
     result_id = chosen_result.result_id
     user_id = chosen_result.from_user.id
-    message_id = chosen_result.inline_message_id
+    inline_message_id = chosen_result.inline_message_id
     
     logger.info(f"User {user_id} chosen inline result: {result_id}")
     
@@ -211,8 +211,10 @@ async def handle_chosen_inline_result(update: Update, context: ContextTypes.DEFA
         # Extract username dari result_id (format: "correct_username")
         username = result_id.replace("correct_", "", 1)
         
+        logger.info(f"Adding detail button for username: {username}")
+        
         # Buat tombol details
-        detail_button = create_detail_button(username, message_id)
+        detail_button = create_detail_button(username)
         
         # Update pesan yang sudah terkirim dengan menambahkan tombol
         try:
@@ -224,14 +226,13 @@ async def handle_chosen_inline_result(update: Update, context: ContextTypes.DEFA
                     f"🔑 <b>Auth Code:</b> <code>{AUTH_CODE}</code>\n\n" 
                     f"<i>Klik tombol di bawah untuk melihat details di Web App</i>"
                 ),
-                chat_id=None,  # Untuk inline messages
-                message_id=message_id,
+                inline_message_id=inline_message_id,
                 parse_mode="HTML",
                 reply_markup=detail_button
             )
-            logger.info(f"Successfully added detail button for username '{username}'")
+            logger.info(f"✅ Successfully added detail button for username '{username}'")
         except Exception as e:
-            logger.error(f"Failed to add detail button: {e}")
+            logger.error(f"❌ Failed to add detail button: {e}")
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE): 
     """Handler untuk error logging""" 
@@ -251,8 +252,8 @@ def main():
      
     application.add_handler(CommandHandler("start", start)) 
     application.add_handler(InlineQueryHandler(handle_inline_query)) 
-    # NEW: Tambahkan handler untuk chosen inline result
-    application.add_handler(CallbackQueryHandler(handle_chosen_inline_result))
+    # ✅ FIX: Gunakan ChosenInlineResultHandler yang benar
+    application.add_handler(ChosenInlineResultHandler(handle_chosen_inline_result))
     application.add_error_handler(error_handler) 
      
     logger.info("Bot started in polling mode...") 

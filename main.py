@@ -1,7 +1,8 @@
 import logging 
 import os 
 import sys 
-# Pastikan WebAppInfo diimpor
+# --- Perubahan: Tambahkan WebAppInfo ---
+# Kita perlu WebAppInfo untuk tombol Mini App
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, InlineQueryResultArticle, InputTextMessageContent, error, WebAppInfo 
 from telegram.ext import Application, CommandHandler, InlineQueryHandler, CallbackQueryHandler, ContextTypes 
 import uuid 
@@ -13,8 +14,10 @@ BOT_TOKEN = os.getenv('BOT_TOKEN', '').strip()
 AUTH_CODE = os.getenv('AUTH_CODE', '1234').strip() 
 PORT = int(os.getenv('PORT', 8443)) 
 WEBHOOK_URL = os.getenv('WEBHOOK_URL', '').strip() 
-# Atur nilai default menjadi string kosong, harus diisi di environment variable
-WEB_APP_URL = os.getenv('WEB_APP_URL', '').strip() 
+# --- Konfigurasi Mini App Baru ---
+# GANTI NILAI INI dengan URL Mini App Anda yang sebenarnya!
+WEB_APP_URL = os.getenv('WEB_APP_URL', 'https://URL_MINI_APP_ANDA').strip() 
+# --------------------------------
 
 # Setup logging 
 logging.basicConfig( 
@@ -32,10 +35,10 @@ def escape_username(username: str) -> str:
     """Escape karakter khusus untuk menghindari masalah formatting""" 
     return username.replace('_', '_​')  # underscore + zero-width space 
 
+# Fungsi generate_details_url tidak lagi digunakan, tetapi kita biarkan agar kode lain tidak terpengaruh
 def generate_details_url(username: str) -> str: 
     """Generate URL untuk view details""" 
     if WEBHOOK_URL: 
-        # Encode username untuk URL 
         encoded_username = urllib.parse.quote(username) 
         return f"{WEBHOOK_URL}/details?username={encoded_username}" 
     else: 
@@ -46,8 +49,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message: 
         return 
          
-    user = update.effective_user 
-     
     bot_username = (await context.bot.get_me()).username 
      
     welcome_text = ( 
@@ -58,8 +59,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"3. Bot akan kirim offer untuk username tersebut\n\n" 
         f"**Format:** `@{bot_username} [kode] [username]`\n" 
         f"**Kode auth:** `{AUTH_CODE}`\n\n" 
-        "🔗 **View Details:** Akan membuka halaman web dengan detail lengkap\n"
-        "🚀 **Buka Mini App:** Akan membuka Web App Telegram secara langsung"
+        "🚀 **Mini App:** Akan membuka Web App Telegram secara langsung" # Deskripsi diperbarui
     ) 
      
     try: 
@@ -81,40 +81,33 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
     results = [] 
      
     # Parse query: format "code username" 
-    parts = query.split(' ', 1)  # Split menjadi 2 parts: code dan username 
+    parts = query.split(' ', 1)  
     auth_code_part = parts[0] if parts else "" 
     username_part = parts[1] if len(parts) > 1 else "" 
      
     # CASE 1: Kode BENAR dan ada username - Tampilkan Fragment Authentication 
     if auth_code_part == AUTH_CODE and username_part: 
-        # Pertahankan format asli username (case sensitive) 
-        target_username = username_part 
+        target_username = username_part.strip() 
          
         logger.info(f"User {user_id} provided CORRECT code and username: '{target_username}'") 
          
-        # Escape username untuk menghindari masalah formatting 
         escaped_username = escape_username(target_username) 
          
-        # Generate URL untuk view details 
-        details_url = generate_details_url(target_username) 
-         
-        # --- Membangun Keyboard ---
-        keyboard_buttons = [
-            # Tombol 1: View Details (URL Biasa)
-            [InlineKeyboardButton("📋 View Details", url=details_url)], 
-        ]
+        # --- Modifikasi Tombol: Hanya Tombol Web App ---
+        keyboard_buttons = []
         
-        # HANYA tambahkan tombol Web App jika WEB_APP_URL TIDAK kosong
-        if WEB_APP_URL:
-            # Tombol 2: Buka Mini App (Menggunakan WebAppInfo)
+        # Hanya tambahkan tombol Web App jika URL diatur dan bukan placeholder
+        if WEB_APP_URL and WEB_APP_URL != 'https://URL_MINI_APP_ANDA':
             try:
                 keyboard_buttons.append(
                     [InlineKeyboardButton("🚀 Buka Mini App", web_app=WebAppInfo(url=WEB_APP_URL))]
                 )
             except Exception as e:
-                # Log jika ada error saat membuat tombol WebAppInfo
-                logger.error(f"Error creating WebAppInfo button: {e}") 
-        # --------------------------
+                logger.error(f"Error creating WebAppInfo button: {e}")
+        
+        # Jika keyboard_buttons kosong (misalnya URL tidak diset), kita buat keyboard kosong
+        reply_markup = InlineKeyboardMarkup(keyboard_buttons) if keyboard_buttons else None
+        # ---------------------------------------------
          
         # Format pesan dengan HTML parsing 
         message_text = ( 
@@ -122,7 +115,8 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"Direct offer to sell your username: <code>{target_username}</code>\n\n" 
             f"<b>Status:</b> ✅ Authenticated\n" 
             f"<b>Target:</b> {escaped_username}\n\n" 
-            f"<i>Click 'View Details' atau 'Buka Mini App' for more information</i>" 
+            # Pesan diperbarui
+            f"<i>Klik 'Buka Mini App' untuk melanjutkan.</i>" 
         ) 
          
         results.append( 
@@ -134,7 +128,8 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
                     message_text=message_text, 
                     parse_mode="HTML" 
                 ), 
-                reply_markup=InlineKeyboardMarkup(keyboard_buttons) 
+                # Gunakan reply_markup yang sudah dimodifikasi
+                reply_markup=reply_markup
             ) 
         ) 
          
@@ -242,7 +237,7 @@ def main():
     logger.info(f"Starting Fragment Authentication Bot") 
     logger.info(f"AUTH_CODE: {AUTH_CODE}") 
     logger.info(f"WEBHOOK_URL: {WEBHOOK_URL}") 
-    logger.info(f"WEB_APP_URL: {WEB_APP_URL}") # Cek apakah URL terbaca
+    logger.info(f"WEB_APP_URL: {WEB_APP_URL}") # Log URL Mini App
  
     application = Application.builder().token(BOT_TOKEN).build() 
      

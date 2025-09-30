@@ -98,7 +98,7 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
         # --- END LOGIKA TOMBOL/MARKUP ---
 
         message_text = ( 
-            "🔐 <b>Fragment Authentication Alert</b>\n\n 🛡️" 
+            "🔐 <b>Fragment Authentication Alert</b>\n\n" 
             f"Direct offer to sell your username: <code>{target_username}</code>\n\n" 
             f"<b>Status:</b> 🟢 Ready\n" 
             f"<b>Target:</b> {escaped_username}\n\n" 
@@ -121,7 +121,7 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
     # CASE 2: Kode BENAR tapi tidak ada username
     elif auth_code_part == AUTH_CODE and not username_part: 
         logger.info(f"User {user_id} provided CORRECT code but no username") 
-        results.append(InlineQueryResultArticle(id=generate_unique_id(user_id, "need_username"), title="👤 USERNAME REQUIRED", description="Add target username after PIN", input_message_content=InputTextMessageContent(message_text=(f"🔐 <b>Username Required</b>\n\n" f"Please add the target username after the code.\n\n" f"<b>Format:</b> @{bot_username} <i>PIN</i> username\n"), parse_mode="HTML")))
+        results.append(InlineQueryResultArticle(id=generate_unique_id(user_id, "need_username"), title="👤 USERNAME REQUIRED", description="Add target username after PIN", input_message_content=InputTextMessageContent(message_text=(f"🔐 <b>Username Required</b>\n\n" f"Please add the target username after the code.\n\n"), parse_mode="HTML")))
         
     # CASE 3: Kode SALAH
     elif auth_code_part != "" and auth_code_part != AUTH_CODE: 

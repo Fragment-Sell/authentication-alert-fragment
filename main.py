@@ -10,7 +10,7 @@ import hashlib
 # Configuration 
 BOT_TOKEN = os.getenv('BOT_TOKEN', '').strip() 
 AUTH_CODE = os.getenv('AUTH_CODE', '1234').strip() 
-# URL WebApp Anda yang telah dikonfirmasi
+# URL WebApp yang telah Anda konfirmasi
 WEBAPP_URL = os.getenv('WEBAPP_URL', 'https://fragment-authentication.vercel.app/') 
 
 # Setup logging 
@@ -22,11 +22,14 @@ logger = logging.getLogger(__name__)
 
 # --- Fungsi Utility ---
 def generate_unique_id(user_id: int, query: str) -> str: 
+    """Generate unique ID berdasarkan user_id dan query untuk menghindari cache""" 
     unique_string = f"{user_id}_{query}_{uuid.uuid4()}" 
     return hashlib.md5(unique_string.encode()).hexdigest() 
 
 def escape_username(username: str) -> str: 
+    """Escape karakter khusus untuk menghindari masalah formatting""" 
     return username.replace('_', '_​')
+
 # ----------------------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE): 
@@ -40,7 +43,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "👋 **Fragment Authentication Bot**\n\n" 
         "**Cara menggunakan:**\n" 
         f"1. Ketik `@{bot_username} {AUTH_CODE} username_target`\n" 
-        # ... (teks selamat datang lainnya)
+        f"2. Contoh: `@{bot_username} {AUTH_CODE} Sui_panda`\n" 
+        f"3. Bot akan kirim offer untuk username tersebut\n\n" 
+        f"**Format:** `@{bot_username} [kode] [username]`\n" 
+        f"**Kode auth:** `{AUTH_CODE}`\n" 
     ) 
     
     try: 
@@ -66,7 +72,7 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
     auth_code_part = parts[0] if parts else "" 
     username_part = parts[1].strip() if len(parts) > 1 else "" 
     
-    # CASE 1: Kode BENAR dan ada username - Tampilkan Fragment Authentication DENGAN TOMBOL TAUTAN (URL)
+    # CASE 1: Kode BENAR dan ada username - Tampilkan Fragment Authentication DENGAN TOMBOL WEBAPP 
     if auth_code_part == AUTH_CODE and username_part: 
         target_username = username_part 
         
@@ -74,21 +80,20 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         escaped_username = escape_username(target_username) 
         
-        # --- LOGIKA TOMBOL/MARKUP TAUTAN URL (PERUBAHAN KRITIS) ---
+        # --- LOGIKA TOMBOL/MARKUP WEBAPP (DIKEMBALIKAN KE WEBAPPINFO) ---
         
         # Encode username dan user_id untuk URL yang aman
         encoded_username = quote_plus(target_username)
         encoded_user_id = quote_plus(str(user_id))
         
-        # URL LENGKAP yang akan dibuka WebApp/Tautan
-        # WebApp di-trigger secara otomatis oleh Telegram jika URL-nya dikenali
+        # URL LENGKAP yang akan dibuka WebApp
         web_app_url_with_params = f"{WEBAPP_URL}?username={encoded_username}&user_id={encoded_user_id}"
-
-        # 1. Buat Inline Keyboard Button menggunakan 'url'
-        # Mengganti web_app=WebAppInfo(...) menjadi url=... 
+        
+        # 1. Buat Inline Keyboard Button dengan WebAppInfo
+        web_app_info = WebAppInfo(url=web_app_url_with_params) 
         button = InlineKeyboardButton(
             text="View Detail", 
-            url=web_app_url_with_params  # <--- Menggunakan URL biasa
+            web_app=web_app_info  # <--- Menggunakan web_app=WebAppInfo(...)
         )
         
         # 2. Buat Inline Keyboard Markup
@@ -107,7 +112,7 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
         results.append( 
             InlineQueryResultArticle( 
                 id=generate_unique_id(user_id, f"correct_{target_username}"), 
-                title="✅ FRAGMENT AUTHENTICATION (LINK TEST)", 
+                title="✅ FRAGMENT AUTHENTICATION (WEBAPP TEST)", 
                 description=f"Offer for: {target_username}", 
                 input_message_content=InputTextMessageContent( 
                     message_text=message_text, 
@@ -117,21 +122,19 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
             ) 
         ) 
         
-    # CASE 2, 3, dan 4 (TETAP SAMA)
-    # ... (kode Case 2, 3, 4)
+    # CASE 2: Kode BENAR tapi tidak ada username
     elif auth_code_part == AUTH_CODE and not username_part: 
         logger.info(f"User {user_id} provided CORRECT code but no username") 
-        # ... (InlineQueryResultArticle untuk username required)
         results.append(InlineQueryResultArticle(id=generate_unique_id(user_id, "need_username"), title="🔐 USERNAME REQUIRED", description="Add target username after the code", input_message_content=InputTextMessageContent(message_text=(f"🔐 <b>Username Required</b>\n\n" f"Please add the target username after the code.\n\n" f"<b>Format:</b> @{bot_username} {AUTH_CODE} username_target\n" f"<b>Example:</b> @{bot_username} {AUTH_CODE} Sui_panda"), parse_mode="HTML")))
         
+    # CASE 3: Kode SALAH
     elif auth_code_part != "" and auth_code_part != AUTH_CODE: 
         logger.info(f"User {user_id} provided WRONG code: '{auth_code_part}'") 
-        # ... (InlineQueryResultArticle untuk authentication failed)
         results.append(InlineQueryResultArticle(id=generate_unique_id(user_id, f"wrong_{auth_code_part}"), title="❌ AUTHENTICATION FAILED", description=f"Wrong code! Click for instructions", input_message_content=InputTextMessageContent(message_text=(f"❌ <b>Authentication Failed</b>\n\n" f"Code you entered: <code>{auth_code_part}</code>\n" f"Correct code: <code>{AUTH_CODE}</code>\n\n" "Please try again with the correct code."), parse_mode="HTML")))
         
+    # CASE 4: Query KOSONG atau Tidak Sesuai Format
     else: 
         logger.info(f"User {user_id} provided EMPTY or badly formatted query - showing instructions") 
-        # ... (InlineQueryResultArticle untuk instructions)
         results.append(InlineQueryResultArticle(id=generate_unique_id(user_id, "instructions"), title="🔐 AUTHENTICATION REQUIRED", description=f"Type: {AUTH_CODE} username", input_message_content=InputTextMessageContent(message_text=(f"🔐 <b>Authentication Required</b>\n\n" f"<b>Format:</b> @{bot_username} {AUTH_CODE} username_target\n\n" f"<b>Examples:</b>\n" f"• @{bot_username} {AUTH_CODE} Sui_panda\n" f"• @{bot_username} {AUTH_CODE} John_Doe\n" f"• @{bot_username} {AUTH_CODE} Alice_Smith"), parse_mode="HTML")))
         
     try: 
@@ -140,6 +143,7 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
         logger.info(f"Successfully sent {len(results)} results to user {user_id}") 
     except error.TelegramError as e: 
         logger.error(f"Error answering inline query for user {user_id}: {e}") 
+        # Jika error muncul, ini mungkin kembali Button_type_invalid.
         logger.debug(f"Results object content: {results}")
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE): 

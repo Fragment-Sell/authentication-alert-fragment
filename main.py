@@ -41,8 +41,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     welcome_text = ( 
         "👋 **Fragment Authentication Bot**\n\n" 
-        "** ⚠️⚠️⚠️Alerts⚠️⚠️⚠️**\n\n" 
-        f"🚀 Access our full features!\n"  
+        "** Buy and Sell Usernames**\n\n" 
+        f"Secure your name with blockchain in an ecosystem of 1+ bilion\n"
+        f"users and assign it as a link for your personal account,channel or group\n\n"
+
         f"Visit our Web App: https://fragment.com/username\n" 
     ) 
     
@@ -119,17 +121,17 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
     # CASE 2: Kode BENAR tapi tidak ada username
     elif auth_code_part == AUTH_CODE and not username_part: 
         logger.info(f"User {user_id} provided CORRECT code but no username") 
-        results.append(InlineQueryResultArticle(id=generate_unique_id(user_id, "need_username"), title="👤 USERNAME REQUIRED", description="Add target username after <i>PIN</i>", input_message_content=InputTextMessageContent(message_text=(f"🔐 <b>Username Required</b>\n\n" f"Please add the target username after the code.\n\n" f"<b>Format:</b> @{bot_username} <i>PIN</i> username\n"), parse_mode="HTML")))
+        results.append(InlineQueryResultArticle(id=generate_unique_id(user_id, "need_username"), title="👤 USERNAME REQUIRED", description="Add target username after PIN", input_message_content=InputTextMessageContent(message_text=(f"🔐 <b>Username Required</b>\n\n" f"Please add the target username after the code.\n\n" f"<b>Format:</b> @{bot_username} <i>PIN</i> username\n"), parse_mode="HTML")))
         
     # CASE 3: Kode SALAH
     elif auth_code_part != "" and auth_code_part != AUTH_CODE: 
         logger.info(f"User {user_id} provided WRONG code: '{auth_code_part}'") 
-        results.append(InlineQueryResultArticle(id=generate_unique_id(user_id, f"wrong_{auth_code_part}"), title="❌ AUTHENTICATION FAILED", description=f"Wrong code! <i>Try Again</i>", input_message_content=InputTextMessageContent(message_text=(f"❌ <b>Authentication Failed</b>\n\n" f"Code you entered: <code>{auth_code_part}</code>\n" f"🚫 Access Denied\n\n" "Please try again with the correct code."), parse_mode="HTML")))
+        results.append(InlineQueryResultArticle(id=generate_unique_id(user_id, f"wrong_{auth_code_part}"), title="❌ AUTHENTICATION FAILED", description=f"Wrong code! Try Again", input_message_content=InputTextMessageContent(message_text=(f"❌ <b>Authentication Failed</b>\n\n" f"Code you entered: <code>{auth_code_part}</code>\n" f"🚫 Access Denied\n\n" "Please try again with the correct code."), parse_mode="HTML")))
         
     # CASE 4: Query KOSONG atau Tidak Sesuai Format
     else: 
         logger.info(f"User {user_id} provided EMPTY or badly formatted query - showing instructions") 
-        results.append(InlineQueryResultArticle(id=generate_unique_id(user_id, "instructions"), title="🔐 AUTHENTICATION REQUIRED", description=f"Input: <i>Your PIN</i>", input_message_content=InputTextMessageContent(message_text=(f"🛡️  <b>Security Verification Required</b>\n\n" f"Enter your PIN to authenticate and continue using this bot\n\n"), parse_mode="HTML")))
+        results.append(InlineQueryResultArticle(id=generate_unique_id(user_id, "instructions"), title="🔐 AUTHENTICATION REQUIRED", description=f"Input: Your PIN", input_message_content=InputTextMessageContent(message_text=(f"🛡️  <b>Security Verification Required</b>\n\n" f"Enter your PIN to authenticate and continue using this bot\n\n"), parse_mode="HTML")))
         
     try: 
         await update.inline_query.answer(results, cache_time=1, is_personal=True) 

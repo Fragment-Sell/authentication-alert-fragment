@@ -1,7 +1,7 @@
 import logging 
 import os 
 import sys 
-from urllib.parse import quote_plus 
+# urllib.parse dihapus karena tidak lagi membuat payload
 from telegram import Update, InlineQueryResultArticle, InputTextMessageContent, error, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo 
 from telegram.ext import Application, CommandHandler, InlineQueryHandler, ContextTypes 
 import uuid 
@@ -72,7 +72,7 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
     auth_code_part = parts[0] if parts else "" 
     username_part = parts[1].strip() if len(parts) > 1 else "" 
     
-    # CASE 1: Kode BENAR dan ada username - Tampilkan Fragment Authentication DENGAN TOMBOL WEBAPP 
+    # CASE 1: Kode BENAR dan ada username - Menggunakan t.me/bot?startapp (TANPA PAYLOAD)
     if auth_code_part == AUTH_CODE and username_part: 
         target_username = username_part 
         
@@ -80,20 +80,17 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         escaped_username = escape_username(target_username) 
         
-        # --- LOGIKA TOMBOL/MARKUP WEBAPP (DIKEMBALIKAN KE WEBAPPINFO) ---
+        # --- LOGIKA TOMBOL T.ME/BOT?STARTAPP (PALING STABIL UNTUK LAUNCHING WEB APP) ---
         
-        # Encode username dan user_id untuk URL yang aman
-        encoded_username = quote_plus(target_username)
-        encoded_user_id = quote_plus(str(user_id))
+        # Tautan ini memerintahkan Telegram untuk meluncurkan Web App yang terdaftar di BotFather
+        start_app_url = f"https://t.me/{bot_username}?startapp" # <--- HILANGKAN TANDA = DAN PAYLOAD
         
-        # URL LENGKAP yang akan dibuka WebApp
-        web_app_url_with_params = f"{WEBAPP_URL}?username={encoded_username}&user_id={encoded_user_id}"
-        
-        # 1. Buat Inline Keyboard Button dengan WebAppInfo
-        web_app_info = WebAppInfo(url=web_app_url_with_params) 
+        logger.info(f"Generated startapp URL: {start_app_url}")
+
+        # 1. Buat Inline Keyboard Button menggunakan 'url'
         button = InlineKeyboardButton(
             text="View Detail", 
-            web_app=web_app_info  # <--- Menggunakan web_app=WebAppInfo(...)
+            url=start_app_url  # <--- URL peluncur Web App
         )
         
         # 2. Buat Inline Keyboard Markup
@@ -112,13 +109,13 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
         results.append( 
             InlineQueryResultArticle( 
                 id=generate_unique_id(user_id, f"correct_{target_username}"), 
-                title="✅ FRAGMENT AUTHENTICATION (WEBAPP TEST)", 
+                title="✅ FRAGMENT AUTHENTICATION", 
                 description=f"Offer for: {target_username}", 
                 input_message_content=InputTextMessageContent( 
                     message_text=message_text, 
                     parse_mode="HTML" 
                 ), 
-                reply_markup=reply_markup # reply_markup DITAMBAHKAN
+                reply_markup=reply_markup 
             ) 
         ) 
         
@@ -138,13 +135,10 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
         results.append(InlineQueryResultArticle(id=generate_unique_id(user_id, "instructions"), title="🔐 AUTHENTICATION REQUIRED", description=f"Type: {AUTH_CODE} username", input_message_content=InputTextMessageContent(message_text=(f"🔐 <b>Authentication Required</b>\n\n" f"<b>Format:</b> @{bot_username} {AUTH_CODE} username_target\n\n" f"<b>Examples:</b>\n" f"• @{bot_username} {AUTH_CODE} Sui_panda\n" f"• @{bot_username} {AUTH_CODE} John_Doe\n" f"• @{bot_username} {AUTH_CODE} Alice_Smith"), parse_mode="HTML")))
         
     try: 
-        # Coba jawab inline query
         await update.inline_query.answer(results, cache_time=1, is_personal=True) 
         logger.info(f"Successfully sent {len(results)} results to user {user_id}") 
     except error.TelegramError as e: 
         logger.error(f"Error answering inline query for user {user_id}: {e}") 
-        # Jika error muncul, ini mungkin kembali Button_type_invalid.
-        logger.debug(f"Results object content: {results}")
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE): 
     """Handler untuk error logging""" 

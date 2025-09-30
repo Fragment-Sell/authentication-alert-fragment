@@ -41,7 +41,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     welcome_text = ( 
         "👋 **Fragment Authentication Bot**\n\n" 
-        "** ⚠️⚠️⚠️Alerts⚠️⚠️⚠️**\n" 
+        "** ⚠️⚠️⚠️Alerts⚠️⚠️⚠️**\n\n" 
         f"🚀 Access our full features!\n"  
         f"Visit our Web App: https://fragment.com/username\n" 
     ) 

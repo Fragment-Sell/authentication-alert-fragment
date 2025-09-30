@@ -101,7 +101,7 @@ async def handle_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE
             "🔐 <b>Fragment Authentication Alert</b>\n\n" 
             f"Direct offer to sell your username: <code>{target_username}</code>\n\n" 
             f"<b>Status:</b> 🟢 Ready\n" 
-            f"<b>Target:</b> {escaped_username}\n\n" 
+            f"<b>Swappable</b>\n\n" 
             f"<i>Click 'View Details' for confirmation</i>" 
         ) 
         
